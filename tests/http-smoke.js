@@ -45,7 +45,7 @@ async function main() {
   const traversalBody = await traversal.text();
   assert(!traversalBody.includes('DB_PASSWORD=') && !traversalBody.includes('ADMIN_PASSWORD_HASH='), '路由器拒绝读取 public 目录之外的文件');
   assert(front.headers.get('x-content-type-options') === 'nosniff' && front.headers.has('content-security-policy'), '动态页面发送基础安全响应头');
-  const reader = await fetch(`${base}/reader/1`, { headers: { cookie: publicJar.join('; ') } });
+  const reader = await fetch(`${base}/reader/2`, { headers: { cookie: publicJar.join('; ') } });
   assert(reader.status === 200 && (await reader.text()).includes('data-image-reader'), 'goootu 使用站内图片阅读器');
   let view = await fetch(`${base}/view/1`, { method: 'POST', headers: { cookie: publicJar.join('; ') } });
   publicJar = mergeCookies(publicJar, incomingCookies(view.headers));
