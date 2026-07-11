@@ -1,0 +1,9 @@
+.env
+.agents/
+.codex/
+storage/runtime/
+storage/logs/
+storage/downloads/
+storage/local-pages/
+public/uploads/
+node_modules/

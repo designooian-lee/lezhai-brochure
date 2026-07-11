@@ -1,0 +1,49 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lezhai_brochure
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: curl,fileinfo,mbstring,openssl,pdo_pgsql,pgsql,zip
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+      - name: Configure
+        run: |
+          HASH=$(php -r "echo password_hash('ci-password', PASSWORD_DEFAULT);")
+          cat > .env <<EOF
+          APP_ENV=test
+          APP_BASE_PATH=/brochure
+          APP_SECRET=ci-secret
+          DB_DSN=pgsql:host=127.0.0.1;port=5432;dbname=lezhai_brochure
+          DB_USER=postgres
+          DB_PASSWORD=postgres
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD_HASH=$HASH
+          NODE_BINARY=node
+          BROWSER_EXECUTABLE=
+          EOF
+      - name: Syntax check
+        run: find . -name '*.php' -not -path './node_modules/*' -print0 | xargs -0 -n1 php -l
+      - run: php scripts/migrate.php
+      - run: php scripts/seed.php
+      - run: php tests/run.php
+      - run: node tests/http-smoke.js
+        env:
+          TEST_ADMIN_PASSWORD: ci-password

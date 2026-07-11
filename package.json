@@ -1,0 +1,6 @@
+{
+  "name": "lezhai-brochure-tools",
+  "private": true,
+  "devDependencies": { "playwright": "^1.55.0" }
+}
+

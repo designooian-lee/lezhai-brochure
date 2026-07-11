@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 1000">
+  <rect width="760" height="1000" fill="#EEE8DF"/>
+  <path d="M90 90h250v34H124v216H90z" fill="#C65D3B"/>
+  <circle cx="628" cy="155" r="22" fill="#C65D3B"/>
+  <text x="90" y="760" font-family="Arial,sans-serif" font-size="66" font-weight="700" fill="#252A28">乐宅.Life</text>
+  <text x="94" y="820" font-family="Arial,sans-serif" font-size="25" letter-spacing="8" fill="#726B63">CATALOG</text>
+  <text x="94" y="900" font-family="Arial,sans-serif" font-size="24" fill="#726B63">封面正在整理</text>
+</svg>
+

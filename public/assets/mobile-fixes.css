@@ -1,0 +1,56 @@
+.hot-row .hot-card {
+    flex: 0 0 min(76vw, 280px);
+    width: min(76vw, 280px);
+    max-width: min(76vw, 280px);
+    overflow: hidden;
+}
+
+.hot-row .catalog-open,
+.hot-row .card-copy {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.site-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+}
+
+.header-link {
+    min-height: 40px;
+    padding: 0 16px;
+    border: 1px solid var(--charcoal);
+    border-radius: 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.header-link:hover {
+    background: var(--charcoal);
+    color: #fff;
+}
+
+.reader-toolbar button,
+.reader-contact {
+    white-space: nowrap;
+}
+
+.reader-contact {
+    justify-self: end;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 650;
+    text-decoration: none;
+}
+
+.reader-contact:hover {
+    text-decoration: underline;
+}
