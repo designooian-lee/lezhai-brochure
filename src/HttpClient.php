@@ -57,7 +57,7 @@ class HttpClient
     {
         $this->validateUrl($url, $resource);
         $ch = curl_init($url);
-        curl_setopt_array($ch, [
+        $options = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_HEADER => true,
             CURLOPT_FOLLOWLOCATION => false,
@@ -66,8 +66,12 @@ class HttpClient
             CURLOPT_USERAGENT => 'Mozilla/5.0 LezhaiBrochure/1.0',
             CURLOPT_ENCODING => '',
             CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_CUSTOMREQUEST => $method,
-        ]);
+        ];
+        if ($method === 'POST') {
+            $options[CURLOPT_POST] = true;
+            $options[CURLOPT_POSTFIELDS] = '';
+        }
+        curl_setopt_array($ch, $options);
         $raw = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
