@@ -69,7 +69,7 @@ final class CatalogParser
             'source_url' => $url,
             'title' => (string) ($info['title'] ?? $this->title($html)),
             'description' => '',
-            'cover_url' => $base . '/1.jpg',
+            'cover_url' => $pages[0] ?? ($base . '/1.jpg'),
             'pages' => $pages,
             'pdf_url' => null,
         ];
@@ -112,7 +112,7 @@ final class CatalogParser
             'source_url' => $url,
             'title' => $this->meta($html, 'og:title') ?: $this->title($html),
             'description' => $this->meta($html, 'og:description'),
-            'cover_url' => $this->meta($html, 'og:image'),
+            'cover_url' => $this->meta($html, 'og:image') ?: ($pages[0] ?? ''),
             'pages' => $pages,
             'pdf_url' => $pdf,
         ];

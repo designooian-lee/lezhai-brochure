@@ -35,6 +35,22 @@ CREATE TABLE IF NOT EXISTS catalogs (
 ALTER TABLE catalogs ADD COLUMN IF NOT EXISTS reader_mode VARCHAR(20) NOT NULL DEFAULT 'source';
 ALTER TABLE catalogs ADD COLUMN IF NOT EXISTS local_page_count INTEGER NOT NULL DEFAULT 0;
 
+CREATE TABLE IF NOT EXISTS catalog_jobs (
+    id BIGSERIAL PRIMARY KEY,
+    catalog_id BIGINT NOT NULL REFERENCES catalogs(id) ON DELETE CASCADE,
+    job_type VARCHAR(20) NOT NULL DEFAULT 'local_pages',
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    progress_current INTEGER NOT NULL DEFAULT 0,
+    progress_total INTEGER NOT NULL DEFAULT 0,
+    phase VARCHAR(30) NOT NULL DEFAULT 'queued',
+    error TEXT NOT NULL DEFAULT '',
+    artifact_path TEXT NOT NULL DEFAULT '',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS catalog_jobs_one_active ON catalog_jobs(catalog_id) WHERE status IN ('pending','running');
+
 CREATE INDEX IF NOT EXISTS catalogs_public_sort ON catalogs(category_id, is_active, manual_priority DESC, view_count DESC);
 
 CREATE TABLE IF NOT EXISTS catalog_daily_views (
@@ -88,6 +104,7 @@ CREATE TABLE IF NOT EXISTS articles (
     body_html TEXT NOT NULL DEFAULT '',
     cover_path TEXT NOT NULL DEFAULT '',
     seo_title VARCHAR(180) NOT NULL DEFAULT '',
+    seo_keywords VARCHAR(300) NOT NULL DEFAULT '',
     meta_description VARCHAR(300) NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
     published_at TIMESTAMPTZ,
@@ -96,6 +113,7 @@ CREATE TABLE IF NOT EXISTS articles (
 );
 
 CREATE INDEX IF NOT EXISTS articles_public_sort ON articles(status, published_at DESC, id DESC);
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS seo_keywords VARCHAR(300) NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS article_monthly_views (
     article_id BIGINT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,

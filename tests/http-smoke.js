@@ -1,7 +1,6 @@
 const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
-const sharp = require('sharp');
 
 const root = process.env.PROJECT_ROOT || path.resolve(__dirname, '..');
 const php = process.env.PHP_BINARY || (process.platform === 'win32'
@@ -104,20 +103,19 @@ async function main() {
   const anonymousPreview = await fetch(`${adminBase}/articles/${draftId}/preview?surface=website`, { redirect: 'manual' });
   assert(anonymousPreview.status === 302, '未登录用户不能预览草稿');
   const websitePreview = await fetch(`${adminBase}/articles/${draftId}/preview?surface=website`, { headers: { cookie: adminJar.join('; ') } }); const websitePreviewHtml = await websitePreview.text();
-  const coverUrl = websitePreviewHtml.match(/class="website-article-cover" src="([^"]+)"/)[1]; const coverResponse = await fetch(`${siteRoot}${coverUrl}`); const coverMeta = await sharp(Buffer.from(await coverResponse.arrayBuffer())).metadata();
-  assert(websitePreview.status === 200 && websitePreviewHtml.includes('noindex,nofollow') && coverMeta.width === 1200 && coverMeta.height === 675, '官网草稿预览可访问并自动生成 1200×675 封面');
+  assert(websitePreview.status === 200 && websitePreviewHtml.includes('noindex,nofollow') && !websitePreviewHtml.includes('website-article-cover'), '官网草稿预览可访问且详情正文不显示封面');
   const brochurePreview = await fetch(`${adminBase}/articles/${draftId}/preview?surface=brochure`, { headers: { cookie: adminJar.join('; ') } });
   assert(brochurePreview.status === 200 && (await brochurePreview.text()).includes('QA 草稿预览'), '图册版本草稿预览可访问');
   const articleCreate = await fetch(`${adminBase}/articles/new`, {
     method: 'POST', redirect: 'manual',
     headers: { cookie: adminJar.join('; '), 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ _csrf: csrf, title: 'QA 测试文章', slug: 'qa-article', excerpt: '用于自动验收', body_html: '<h2>安全正文</h2><p>本地验收内容</p><script>alert(1)</script>', seo_title: 'QA SEO 标题', meta_description: 'QA SEO 描述', status: 'published' }),
+    body: new URLSearchParams({ _csrf: csrf, title: 'QA 测试文章', slug: 'qa-article', excerpt: '用于自动验收', body_html: '<h2>安全正文</h2><p>本地验收内容</p><script>alert(1)</script>', seo_keywords: '门窗,安装', seo_title: 'QA SEO 标题', meta_description: 'QA SEO 描述', status: 'published' }),
   });
   assert(articleCreate.status === 302, '后台可创建并发布文章');
   const publishedId = articleCreate.headers.get('location').match(/articles\/(\d+)\/edit/)[1];
   const publicArticle = await fetch(`${siteRoot}/articles/qa-article`);
   const publicArticleHtml = await publicArticle.text();
-  assert(publicArticle.status === 200 && publicArticleHtml.includes('QA SEO 标题') && !publicArticleHtml.includes('alert(1)'), '官网文章输出 SEO 并清理危险 HTML');
+  assert(publicArticle.status === 200 && publicArticleHtml.includes('QA SEO 标题') && publicArticleHtml.includes('name="keywords" content="门窗,安装"') && !publicArticleHtml.includes('alert(1)'), '官网文章输出 SEO 并清理危险 HTML');
   assert(publicArticleHtml.includes('热门文章') && publicArticleHtml.includes('article-hot-viewport'), '官网文章右侧显示月度热门文章滚动区');
   const brochureArticle = await fetch(`${base}/articles/qa-article`);
   assert(brochureArticle.status === 200 && (await brochureArticle.text()).includes('https://lezhai.life/articles/qa-article'), '图册文章 canonical 指向官网版本');

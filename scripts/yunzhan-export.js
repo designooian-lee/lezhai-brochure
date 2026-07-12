@@ -14,11 +14,11 @@ function loadPlaywright() {
   const url = process.argv[2];
   const output = process.argv[3];
   const requested = Number(process.argv[4] || 0);
-  const executablePath = process.argv[5] || undefined;
+  const executablePath = process.argv[5] || process.env.BROWSER_EXECUTABLE || undefined;
   if (!url || !output) throw new Error('The catalog URL and output directory are required.');
 
   fs.mkdirSync(output, { recursive: true });
-  const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'], ...(executablePath ? { executablePath } : {}) });
   try {
     const context = await browser.newContext({ viewport: { width: 1800, height: 2400 }, deviceScaleFactor: 1 });
     const page = await context.newPage();

@@ -186,3 +186,8 @@
 .article-hot-empty { margin: 0; color: var(--muted); font-size: 14px; }
 @keyframes article-hot-scroll { to { transform: translateY(-50%); } }
 @media (prefers-reduced-motion: reduce) { .article-hot-track { animation: none; } .article-hot-copy { display: none; } }
+.footer-latest-articles a { grid-template-columns: 24px 1fr; gap: 8px; }
+.footer-latest-articles a span { font-size: 40px; line-height: .7; }
+.website-article-card > a { grid-template-columns: 265px 1fr; }
+.website-article-card img, .article-card-placeholder { width: 265px; max-width: 100%; max-height: none; aspect-ratio: 500 / 670; height: auto; min-height: 0; }
+@media (max-width: 600px) { .website-article-card > a { grid-template-columns: 1fr; } .website-article-card img, .article-card-placeholder { width: 100%; max-height: none; } }

@@ -78,15 +78,19 @@ final class ArticleService
         $body=$this->sanitizeHtml((string)($input['body_html']??''));$newFiles=[];
         try{
             $coverPath=(string)($existing['cover_path']??'');
+            $oldCover=$coverPath;
+            if(isset($input['remove_cover']))$coverPath='';
             if($cover&&($cover['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE){$coverPath=$this->storeImage($cover,'cover',true);$newFiles[]=$coverPath;}
-            if($coverPath===''){$first=$this->firstBodyImage($body);if($first!==''){$coverPath=$this->coverFromStoredImage($first);$newFiles[]=$coverPath;}}
+            if($coverPath===''&&!isset($input['remove_cover'])){$first=$this->firstBodyImage($body);if($first!==''){$coverPath=$this->coverFromStoredImage($first);$newFiles[]=$coverPath;}}
             $status=($input['status']??'draft')==='published'?'published':'draft';
             $publishedAt=$status==='published'?($existing['published_at']??date(DATE_ATOM)):null;
-            $values=[$title,$slug,trim((string)($input['excerpt']??'')),$body,$coverPath,trim((string)($input['seo_title']??'')),trim((string)($input['meta_description']??'')),$status,$publishedAt];
+            $values=[$title,$slug,trim((string)($input['excerpt']??'')),$body,$coverPath,trim((string)($input['seo_title']??'')),trim((string)($input['seo_keywords']??'')),trim((string)($input['meta_description']??'')),$status,$publishedAt];
             $this->pdo->beginTransaction();
-            if($id){$values[]=$id;$this->pdo->prepare('UPDATE articles SET title=?,slug=?,excerpt=?,body_html=?,cover_path=?,seo_title=?,meta_description=?,status=?,published_at=?,updated_at=NOW() WHERE id=?')->execute($values);$saved=$id;}
-            else{$statement=$this->pdo->prepare('INSERT INTO articles(title,slug,excerpt,body_html,cover_path,seo_title,meta_description,status,published_at) VALUES(?,?,?,?,?,?,?,?,?) RETURNING id');$statement->execute($values);$saved=(int)$statement->fetchColumn();if($requestedSlug===''){$slug='article-'.$saved;$this->pdo->prepare('UPDATE articles SET slug=? WHERE id=?')->execute([$slug,$saved]);}}
-            $this->pdo->commit();return $saved;
+            if($id){$values[]=$id;$this->pdo->prepare('UPDATE articles SET title=?,slug=?,excerpt=?,body_html=?,cover_path=?,seo_title=?,seo_keywords=?,meta_description=?,status=?,published_at=?,updated_at=NOW() WHERE id=?')->execute($values);$saved=$id;}
+            else{$statement=$this->pdo->prepare('INSERT INTO articles(title,slug,excerpt,body_html,cover_path,seo_title,seo_keywords,meta_description,status,published_at) VALUES(?,?,?,?,?,?,?,?,?,?) RETURNING id');$statement->execute($values);$saved=(int)$statement->fetchColumn();if($requestedSlug===''){$slug='article-'.$saved;$this->pdo->prepare('UPDATE articles SET slug=? WHERE id=?')->execute([$slug,$saved]);}}
+            $this->pdo->commit();
+            if($oldCover!==$coverPath&&str_starts_with($oldCover,'/uploads/articles/')&&!str_contains($body,'src="'.$oldCover.'"'))@unlink(dirname(__DIR__).'/public'.$oldCover);
+            return $saved;
         }catch(\Throwable $exception){if($this->pdo->inTransaction())$this->pdo->rollBack();foreach($newFiles as $path)@unlink(dirname(__DIR__).'/public'.$path);throw $exception;}
     }
 
@@ -142,9 +146,9 @@ final class ArticleService
 
     private function makeCover(\GdImage $source,int $width,int $height): \GdImage
     {
-        $target=imagecreatetruecolor(1200,675);$sourceRatio=$width/$height;$targetRatio=1200/675;
+        $target=imagecreatetruecolor(500,670);$sourceRatio=$width/$height;$targetRatio=500/670;
         if($sourceRatio>$targetRatio){$cropHeight=$height;$cropWidth=(int)round($height*$targetRatio);$sourceX=(int)(($width-$cropWidth)/2);$sourceY=0;}else{$cropWidth=$width;$cropHeight=(int)round($width/$targetRatio);$sourceX=0;$sourceY=(int)(($height-$cropHeight)/2);}
-        imagecopyresampled($target,$source,0,0,$sourceX,$sourceY,1200,675,$cropWidth,$cropHeight);return $target;
+        imagecopyresampled($target,$source,0,0,$sourceX,$sourceY,500,670,$cropWidth,$cropHeight);return $target;
     }
 
     private function resizeBody(\GdImage $source,int $width,int $height): \GdImage

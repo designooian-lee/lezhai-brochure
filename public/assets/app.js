@@ -205,4 +205,27 @@
   if (dialog?.dataset.autoReaderUrl) {
     openReader({ dataset: { readerUrl: dialog.dataset.autoReaderUrl, viewUrl: dialog.dataset.autoViewUrl, catalogTitle: dialog.dataset.autoTitle } });
   }
+  const jobPanel = document.querySelector('[data-catalog-job]');
+  if (jobPanel) {
+    const message = jobPanel.querySelector('[data-job-message]');
+    const progress = jobPanel.querySelector('[data-job-progress]');
+    const error = jobPanel.querySelector('[data-job-error]');
+    const download = jobPanel.querySelector('[data-job-download]');
+    const labels = { queued: '等待后台处理', preparing: '正在准备', downloading: '正在下载高清页面', extracting: '正在生成本地图片', packaging: '正在打包 ZIP', completed: '生成完成', failed: '生成失败' };
+    const poll = async () => {
+      try {
+        const response = await fetch(jobPanel.dataset.statusUrl, { headers: { Accept: 'application/json' } });
+        if (!response.ok) return;
+        const data = await response.json(); const job = data.job;
+        if (!job) return;
+        const current = Number(job.progress_current || 0); const total = Number(job.progress_total || 0);
+        message.textContent = `${labels[job.phase] || job.phase}${total > 0 ? ` · ${current}/${total} 页` : ''}`;
+        progress.hidden = !['pending', 'running'].includes(job.status); progress.max = Math.max(1, total); progress.value = current;
+        error.hidden = job.status !== 'failed'; error.textContent = job.error || '';
+        if (data.download_url) { download.href = data.download_url; download.hidden = false; }
+        if (['pending', 'running'].includes(job.status)) window.setTimeout(poll, 1500);
+      } catch (_) { window.setTimeout(poll, 3000); }
+    };
+    poll();
+  }
 })();

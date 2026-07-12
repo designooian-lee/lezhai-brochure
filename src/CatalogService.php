@@ -69,13 +69,15 @@ final class CatalogService
 
     public function preview(string $url): array
     {
-        return $this->parser->parse($url);
+        $parsed=$this->parser->parse($url);
+        $parsed['cover_url']=$this->cacheCover($parsed['cover_url'],$parsed['pages']);
+        return $parsed;
     }
 
     public function create(array $input): int
     {
         $parsed = $this->parser->parse((string) $input['source_url']);
-        $cover = $this->cacheCover($parsed['cover_url']);
+        $cover = $this->cacheCover($parsed['cover_url'], $parsed['pages']);
         $stmt = $this->pdo->prepare(
             'INSERT INTO catalogs(category_id, source_url, source_type, name, description, cover_path, cover_source_url, page_manifest, pdf_url, manual_priority, is_active, parse_status, parsed_at)
              VALUES(?,?,?,?,?,?,?,?,?,?,?,\'ok\',NOW()) RETURNING id'
@@ -115,7 +117,7 @@ final class CatalogService
         }
         try {
             $parsed = $this->parser->parse($catalog['source_url']);
-            $cover = $this->cacheCover($parsed['cover_url']);
+            $cover = $this->cacheCover($parsed['cover_url'], $parsed['pages']);
             $this->invalidateDownload($catalog);
             $this->invalidateLocalPages($id);
             $this->pdo->prepare('UPDATE catalogs SET source_url=?, source_type=?, cover_path=?, cover_source_url=?, page_manifest=?, pdf_url=?, name=CASE WHEN BTRIM(name)=\'\' THEN ? ELSE name END, description=CASE WHEN BTRIM(description)=\'\' THEN ? ELSE description END, parse_status=\'ok\', parse_error=\'\', parsed_at=NOW(), updated_at=NOW() WHERE id=?')
@@ -176,7 +178,7 @@ final class CatalogService
         $this->pdo->prepare('DELETE FROM categories WHERE id=?')->execute([$id]);
     }
 
-    public function buildDownload(int $id): string
+    public function buildDownload(int $id, ?callable $progress = null): string
     {
         $catalog = $this->find($id, true);
         if (!$catalog) {
@@ -201,6 +203,7 @@ final class CatalogService
         }
         $target = $downloadDir . '/' . $safe . '-' . $id . '.zip';
         if (is_file($target)) {
+            if ($progress) $progress(count($pages), count($pages), 'packaging');
             return $target;
         }
         $renderDir = null;
@@ -229,6 +232,7 @@ final class CatalogService
                     if ($pageFile === '' || !is_file($pageFile) || !$zip->addFile($pageFile, sprintf('%04d.png', $index + 1))) {
                         throw new RuntimeException('浏览器还原的第 ' . ($index + 1) . ' 页无法写入 ZIP。');
                     }
+                    if ($progress) $progress($index + 1, count($pages), 'downloading');
                     continue;
                 }
                 $extension = strtolower(pathinfo((string) parse_url($url, PHP_URL_PATH), PATHINFO_EXTENSION));
@@ -240,7 +244,9 @@ final class CatalogService
                     throw new RuntimeException('第 ' . ($index + 1) . ' 页下载失败：' . $url . '；' . $e->getMessage(), 0, $e);
                 }
                 $zip->addFile($pageFile, sprintf('%04d.%s', $index + 1, $extension));
+                if ($progress) $progress($index + 1, count($pages), 'downloading');
             }
+            if ($progress) $progress(count($pages), count($pages), 'packaging');
             $zip->close();
             foreach (glob($runtimeDir . '/page-' . $id . '-*') ?: [] as $file) {
                 @unlink($file);
@@ -264,11 +270,11 @@ final class CatalogService
         }
     }
 
-    public function buildLocalPages(int $id): int
+    public function buildLocalPages(int $id, ?callable $progress = null): int
     {
         $catalog = $this->find($id, true);
         if (!$catalog) throw new RuntimeException('图册不存在。');
-        $download = $this->buildDownload($id);
+        $download = $this->buildDownload($id, $progress);
         if (!str_ends_with(strtolower($download), '.zip')) {
             throw new RuntimeException('该图册只能下载 PDF，暂不能生成本地图片阅读。');
         }
@@ -293,6 +299,7 @@ final class CatalogService
                 $size = @getimagesize($staging . '/' . $name);
                 if (!$size) throw new RuntimeException('下载包内含有无效图片：' . $name);
                 $count++;
+                if ($progress) $progress($count, $zip->numFiles, 'extracting');
             }
         } catch (\Throwable $e) {
             $this->clearDirectory($staging);
@@ -322,6 +329,20 @@ final class CatalogService
         return $files;
     }
 
+    public function deleteLocalPages(int $id): void
+    {
+        $catalog=$this->find($id,true);if(!$catalog)throw new RuntimeException('图册不存在。');
+        $active=$this->pdo->prepare("SELECT 1 FROM catalog_jobs WHERE catalog_id=? AND status IN ('pending','running')");$active->execute([$id]);if($active->fetchColumn())throw new RuntimeException('高清任务正在运行，请完成后再删除。');
+        $this->invalidateDownload($catalog);
+        $this->invalidateLocalPages($id);
+    }
+
+    public function readyDownload(int $id): ?string
+    {
+        $catalog=$this->find($id,true);if(!$catalog)return null;
+        $file=(string)($catalog['download_cache']??'');return $file!==''&&is_file($file)?$file:null;
+    }
+
     public function localPageFile(int $id, string $name): ?string
     {
         if (!preg_match('~^\d{4}\.(?:jpg|jpeg|png|webp)$~i', $name)) return null;
@@ -329,10 +350,29 @@ final class CatalogService
         return is_file($file) ? $file : null;
     }
 
+    public function sourcePageFile(int $id, int $index): ?string
+    {
+        $catalog = $this->find($id);
+        if (!$catalog || $catalog['source_type'] !== 'goootu' || $index < 0) return null;
+        $pages = json_decode((string) $catalog['page_manifest'], true) ?: [];
+        $url = $pages[$index] ?? '';
+        if (!is_string($url) || !str_starts_with($url, 'http')) return null;
+        $directory = dirname(__DIR__) . '/storage/runtime/source-pages/' . $id;
+        @mkdir($directory, 0775, true);
+        $target = $directory . '/' . sprintf('%04d.img', $index + 1);
+        if (!is_file($target)) {
+            $temporary = $target . '.tmp';
+            $this->http->download($url, $temporary);
+            if (!@getimagesize($temporary) || !@rename($temporary, $target)) { @unlink($temporary); return null; }
+        }
+        return $target;
+    }
+
     private function invalidateLocalPages(int $id): void
     {
         $this->clearDirectory(dirname(__DIR__) . '/storage/local-pages/' . $id);
         $this->pdo->prepare('UPDATE catalogs SET local_page_count=0, reader_mode=\'source\' WHERE id=?')->execute([$id]);
+        $this->pdo->prepare("DELETE FROM catalog_jobs WHERE catalog_id=? AND status NOT IN ('pending','running')")->execute([$id]);
     }
 
     private function clearDirectory(string $directory): void
@@ -421,20 +461,32 @@ final class CatalogService
         if (is_dir($directory)) @rmdir($directory);
     }
 
-    private function cacheCover(string $url): string
+    private function cacheCover(string $url, array $pages = []): string
     {
-        if ($url === '') {
-            return '';
-        }
         $dir = dirname(__DIR__) . '/public/uploads/covers';
         @mkdir($dir, 0775, true);
-        $filename = hash('sha256', $url) . '.img';
-        $target = $dir . '/' . $filename;
-        if (!is_file($target)) {
-            $this->http->download($url, $target . '.tmp');
-            rename($target . '.tmp', $target);
+        $candidates = array_values(array_unique(array_filter(array_merge([$url], $pages), static fn ($candidate) => is_string($candidate) && str_starts_with($candidate, 'http'))));
+        $lastError = null;
+        foreach ($candidates as $candidate) {
+            $temporary = $dir . '/.' . hash('sha256', $candidate) . '.tmp';
+            try {
+                $this->http->download($candidate, $temporary);
+                $info = @getimagesize($temporary);
+                $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+                $mime = (string) ($info['mime'] ?? '');
+                if (!$info || !isset($extensions[$mime])) throw new RuntimeException('封面来源不是有效的 JPG、PNG 或 WebP 图片。');
+                $filename = hash('sha256', $candidate) . '.' . $extensions[$mime];
+                $target = $dir . '/' . $filename;
+                if (!is_file($target) && !@rename($temporary, $target)) throw new RuntimeException('封面图片无法保存。');
+                @unlink($temporary);
+                return '/uploads/covers/' . $filename;
+            } catch (\Throwable $exception) {
+                @unlink($temporary);
+                $lastError = $exception;
+            }
         }
-        return '/uploads/covers/' . $filename;
+        if ($lastError) throw new RuntimeException('封面自动采集失败：' . $lastError->getMessage(), 0, $lastError);
+        return '';
     }
 
     private function saveUpload(array $upload, int $id): string

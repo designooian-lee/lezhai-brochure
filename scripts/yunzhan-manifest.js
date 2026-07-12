@@ -11,10 +11,10 @@ function loadPlaywright() {
 (async () => {
   const { chromium } = loadPlaywright();
   const url = process.argv[2];
-  const executablePath = process.argv[3] || undefined;
+  const executablePath = process.argv[3] || process.env.BROWSER_EXECUTABLE || undefined;
   if (!url) throw new Error('The catalog URL is required.');
 
-  const browser = await chromium.launch({ headless: true, ...(executablePath ? { executablePath } : {}) });
+  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage'], ...(executablePath ? { executablePath } : {}) });
   try {
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });

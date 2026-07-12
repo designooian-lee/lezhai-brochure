@@ -14,12 +14,15 @@ function check(bool $condition, string $message): void {
 $pdo = Lezhai\Database::connection();
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='catalogs'")->fetchColumn() === 1, '数据库结构已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_name='catalogs' AND column_name IN ('reader_mode','local_page_count')")->fetchColumn() === 2, '本地阅读模式字段已创建');
+check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_name='articles' AND column_name='seo_keywords'")->fetchColumn() === 1, '文章 SEO 关键字字段已创建');
+check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='catalog_jobs'")->fetchColumn() === 1, '图册后台任务表已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('tutorials','tutorial_media')")->fetchColumn() === 2, '指纹锁教程数据表已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='articles'")->fetchColumn() === 1, '官网文章数据表已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='article_monthly_views'")->fetchColumn() === 1, '文章月度热点数据表已创建');
 check(extension_loaded('gd'), 'GD 图片处理扩展已启用');
 check((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() >= 1, '至少有一个分类');
 check((int)$pdo->query('SELECT COUNT(DISTINCT source_type) FROM catalogs')->fetchColumn() >= 3, '已导入云展网、goootu、FLBOOK 三类样本');
+$jobCatalogId=(int)$pdo->query('SELECT id FROM catalogs ORDER BY id LIMIT 1')->fetchColumn();$jobService=new Lezhai\CatalogJobService($pdo);$firstJob=$jobService->enqueue($jobCatalogId);$sameJob=$jobService->enqueue($jobCatalogId);check((int)$firstJob['id']===(int)$sameJob['id'],'同一图册不会重复创建活动任务');$pdo->prepare('DELETE FROM catalog_jobs WHERE id=?')->execute([$firstJob['id']]);
 
 $parser = new Lezhai\CatalogParser();
 try { $parser->parse('https://example.com/book'); check(false, '未知域名被拒绝'); } catch (Throwable $e) { check(str_contains($e->getMessage(), '暂不支持'), '未知域名被拒绝'); }
