@@ -1,0 +1,13 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Journey from '../components/Journey.astro';
+import { brand, journey } from '../data/site';
+const title='门窗服务流程｜现场量尺、方案报价与安装交付｜乐宅.Life';
+const description='了解乐宅.Life 从需求确认、惠州现场量尺、方案报价到排期安装、验收售后的五阶段门窗服务流程。';
+const schema={ '@context':'https://schema.org','@type':'Service',name:'门窗设计与安装交付服务',description,provider:{'@type':'Organization',name:brand.name,url:brand.domain},areaServed:{'@type':'City',name:'惠州'},hasOfferCatalog:{'@type':'OfferCatalog',name:'服务阶段',itemListElement:journey.map(([,name,detail])=>({'@type':'Offer',itemOffered:{'@type':'Service',name,description:detail}}))}};
+---
+<BaseLayout title={title} description={description} path="/services/" jsonLd={schema}>
+  <section class="content-hero"><div class="container content-hero-box"><p class="eyebrow">SERVICE JOURNEY</p><h1 class="page-title">从喜欢的效果，到清楚的下一步</h1><p class="lead">门窗不是只在下单时做一次选择。现场、尺寸、配置、安装与收口，需要在每个节点被确认。</p></div></section>
+  <section class="section--tight"><div class="container"><Journey /></div></section>
+  <section class="section"><div class="container content-grid"><article class="content-main prose"><h2>先理解空间，再推荐产品</h2><p>咨询从生活习惯、空间风格和现场条件开始。我们会把参考效果拆成门型、材质、颜色、比例和安装条件，说明哪些适合、哪些需要调整。</p><h2>量尺不只是记录数字</h2><p>现场量尺同时检查洞口、墙体、地面完成面、开向和收口条件。问题越早被发现，方案和预算越容易保持清楚。</p><h2>报价说明选择和边界</h2><p>方案报价需要说明配置差异、服务范围和可能变化，不把影响交付的条件留到安装前才确认。</p><h2>安装之后仍有明确入口</h2><p>安装阶段记录关键问题，验收后保留反馈入口，让问题有人接收、跟进和确认结果。</p></article><aside class="content-side info-panel"><h3>五阶段</h3><dl>{journey.map(([number,name,detail])=><><dt>{number} · {name}</dt><dd>{detail}</dd></>)}</dl></aside></div></section>
+</BaseLayout>

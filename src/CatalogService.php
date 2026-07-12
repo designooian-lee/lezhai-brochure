@@ -439,7 +439,10 @@ final class CatalogService
 
     private function saveUpload(array $upload, int $id): string
     {
-        $type = (new \finfo(FILEINFO_MIME_TYPE))->file($upload['tmp_name']);
+        if(($upload['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK)throw new RuntimeException('封面上传失败。');
+        $temporary=(string)($upload['tmp_name']??'');$size=(int)($upload['size']??0);
+        if($size<1||$size>10*1024*1024||!is_uploaded_file($temporary))throw new RuntimeException('封面文件大小或来源无效。');
+        $type = (new \finfo(FILEINFO_MIME_TYPE))->file($temporary);
         $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
         if (!isset($extensions[$type])) {
             throw new RuntimeException('封面只支持 JPG、PNG 或 WebP。');
@@ -447,7 +450,7 @@ final class CatalogService
         $dir = dirname(__DIR__) . '/public/uploads/covers';
         @mkdir($dir, 0775, true);
         $filename = 'manual-' . $id . '-' . time() . '.' . $extensions[$type];
-        if (!move_uploaded_file($upload['tmp_name'], $dir . '/' . $filename)) {
+        if (!move_uploaded_file($temporary, $dir . '/' . $filename)) {
             throw new RuntimeException('封面上传失败。');
         }
         return '/uploads/covers/' . $filename;

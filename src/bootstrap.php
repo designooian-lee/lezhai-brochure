@@ -21,7 +21,6 @@ function e(?string $value): string
 
 function base_path(string $path = ''): string
 {
-    $base = rtrim(Lezhai\Config::get('APP_BASE_PATH', '/brochure'), '/');
+    $base = array_key_exists('lezhai_base_path', $GLOBALS) ? rtrim((string)$GLOBALS['lezhai_base_path'], '/') : rtrim(Lezhai\Config::get('APP_BASE_PATH', '/brochure'), '/');
     return $base . ($path === '' ? '/' : '/' . ltrim($path, '/'));
 }
-

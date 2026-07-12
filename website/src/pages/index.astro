@@ -1,0 +1,71 @@
+---
+import { Picture } from 'astro:assets';
+import { ArrowRightIcon } from '@phosphor-icons/react';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Journey from '../components/Journey.astro';
+import { brand, caseStudies, siteConfig } from '../data/site';
+import hero from '../assets/images/hero-entry.png';
+import entryDoor from '../assets/images/scene-entry-door-v2.png';
+import glassLiving from '../assets/images/scene-glass-living.png';
+import oakDoor from '../assets/images/scene-oak-door.png';
+import thermalWindow from '../assets/images/scene-thermal-break-window-v2.png';
+import processDesign from '../assets/images/process-design.png';
+import processMeasure from '../assets/images/process-measure.png';
+import processInstall from '../assets/images/process-install.png';
+import cta from '../assets/images/cta-hallway.png';
+
+const sceneImages = [entryDoor, thermalWindow, glassLiving, oakDoor];
+const pageTitle = '乐宅.Life｜惠州门窗设计、量尺与安装交付';
+const description = '乐宅.Life 是惠州本地设计型门窗服务商，从选型、现场量尺到安装与售后，让喜欢的门窗效果适合真实的家。';
+const jsonLd = [
+  { '@context':'https://schema.org','@type':'WebSite', name:brand.name, url:brand.domain, inLanguage:'zh-CN' },
+  { '@context':'https://schema.org','@type':['Organization','HomeAndConstructionBusiness'], name:brand.name, alternateName:brand.englishName, url:brand.domain, logo:`${brand.domain}/brand/logo-signature.png`, areaServed:{'@type':'City',name:brand.region}, description:brand.category, ...(siteConfig.phone ? { telephone:siteConfig.phone } : {}), ...(siteConfig.address ? { address:{'@type':'PostalAddress',streetAddress:siteConfig.address,addressLocality:'惠州',addressRegion:'广东省',addressCountry:'CN'} } : {}) },
+  { '@context':'https://schema.org','@type':'Service', name:'门窗设计、量尺与安装交付', provider:{'@type':'Organization',name:brand.name,url:brand.domain}, areaServed:{'@type':'City',name:brand.region}, serviceType:'住宅门窗方案、现场量尺、安装交付与售后沟通' },
+];
+---
+<BaseLayout title={pageTitle} description={description} path="/" jsonLd={jsonLd}>
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">{brand.category}</p>
+        <h1 class="display">把喜欢的门<br />装进生活</h1>
+        <div class="hero-mark" aria-hidden="true"></div>
+        <p class="lead">从选型、量尺到安装，让设计适合真实的家。</p>
+        <div class="hero-actions"><a class="button" href="/contact/">预约量尺 <ArrowRightIcon size={18} weight="bold" /></a></div>
+      </div>
+      <div class="hero-image"><Picture src={hero} formats={['avif','webp']} widths={[720,960,1440]} sizes="(max-width: 960px) 100vw, 58vw" alt="深色木质入户门打开在温暖克制的住宅玄关中" loading="eager" fetchpriority="high" /></div>
+    </div>
+  </section>
+
+  <section class="section--tight" id="scenes" aria-labelledby="scenes-title">
+    <div class="container">
+      <div class="gallery-head"><div><p class="eyebrow">CONCEPT SCENES</p><h2 class="section-title" id="scenes-title">门窗灵感，落进生活场景</h2></div><p class="concept-note">让每一次推门、每一束光，都成为回家后恰到好处的温柔。场景仅作设计表达。</p></div>
+      <div class="gallery-grid">
+        {caseStudies.map((item,index) => <article class="gallery-card">
+          <div class="gallery-image"><Picture src={sceneImages[index]} formats={['avif','webp']} widths={[360,540,720]} sizes="(max-width:600px) 50vw, (max-width:960px) 50vw, 25vw" alt={item.alt} loading="lazy" /></div>
+          <div class="gallery-meta"><div><strong>{item.space}</strong><span>{item.title}</span></div><span>0{index+1}</span></div>
+        </article>)}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="value-title">
+    <div class="container">
+      <p class="eyebrow">WHY LEZHAI</p><h2 class="section-title" id="value-title">好设计，更要好落地</h2>
+      <div class="value-grid">
+        <article class="value-card"><div><div class="value-heading"><span class="value-dot"></span><h3>懂设计</h3></div><p>说明款式为什么适合空间，让风格、颜色和比例有清楚的理由。</p></div><div class="value-image"><Picture src={processDesign} formats={['avif','webp']} widths={[480,720]} sizes="(max-width:960px) 60vw, 33vw" alt="设计人员用木材、石材与金属样板讨论门窗搭配" loading="lazy" /></div></article>
+        <article class="value-card"><div><div class="value-heading"><span class="value-dot"></span><h3>懂现场</h3></div><p>提前判断洞口、墙体、开向与收口，减少后续返工与反复沟通。</p></div><div class="value-image"><Picture src={processMeasure} formats={['avif','webp']} widths={[480,720]} sizes="(max-width:960px) 60vw, 33vw" alt="工作人员使用卷尺和水平尺检查门洞现场条件" loading="lazy" /></div></article>
+        <article class="value-card"><div><div class="value-heading"><span class="value-dot"></span><h3>交付可控</h3></div><p>关键节点主动记录和同步，让安装、验收与售后都有明确下一步。</p></div><div class="value-image"><Picture src={processInstall} formats={['avif','webp']} widths={[480,720]} sizes="(max-width:960px) 60vw, 33vw" alt="安装人员在完成面保护良好的住宅内校正木门门框" loading="lazy" /></div></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section--tight"><div class="container"><Journey /></div></section>
+
+  <section class="section" aria-labelledby="appointment-title">
+    <div class="container cta-panel">
+      <div class="cta-copy"><p class="eyebrow">NEXT STEP</p><h2 id="appointment-title">把喜欢的门，装进生活</h2><p>{brand.category}，先了解空间、现场和使用需求，再讨论适合的门窗方案。</p><a class="button button--light" href="/contact/">预约量尺 <ArrowRightIcon size={18} weight="bold" /></a></div>
+      <div class="cta-image"><Picture src={cta} formats={['avif','webp']} widths={[720,960]} sizes="(max-width:960px) 100vw, 50vw" alt="暖阳照进有浅木门与胡桃木边柜的安静住宅过道" loading="lazy" /></div>
+    </div>
+  </section>
+</BaseLayout>

@@ -7,3 +7,8 @@ storage/downloads/
 storage/local-pages/
 public/uploads/
 node_modules/
+website/.astro/
+storage/website-dist/
+storage/runtime/
+storage/logs/
+.env

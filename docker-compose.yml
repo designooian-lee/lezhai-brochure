@@ -1,0 +1,46 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        PUBLIC_SITE_ENV: production
+        PUBLIC_FORM_ENDPOINT: ${PUBLIC_FORM_ENDPOINT:-}
+        PUBLIC_STATICFORMS_API_KEY: ${PUBLIC_STATICFORMS_API_KEY:-}
+        PUBLIC_FORM_SUBJECT: ${PUBLIC_FORM_SUBJECT:-}
+        PUBLIC_PHONE: ${PUBLIC_PHONE:-}
+        PUBLIC_ADDRESS: ${PUBLIC_ADDRESS:-}
+        PUBLIC_BUSINESS_HOURS: ${PUBLIC_BUSINESS_HOURS:-}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      DB_DSN: pgsql:host=db;port=5432;dbname=lezhai
+      DB_USER: lezhai
+      DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - uploads:/app/public/uploads
+      - downloads:/app/storage/downloads
+      - local_pages:/app/storage/local-pages
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lezhai
+      POSTGRES_USER: lezhai
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lezhai -d lezhai"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+volumes:
+  postgres_data:
+  uploads:
+  downloads:
+  local_pages:

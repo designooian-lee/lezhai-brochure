@@ -19,17 +19,20 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
-          extensions: curl,fileinfo,mbstring,openssl,pdo_pgsql,pgsql,zip
+          extensions: curl,fileinfo,gd,mbstring,openssl,pdo_pgsql,pgsql,zip
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
-      - run: npm install
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check:website
+      - run: pnpm run build:website
       - run: npx playwright install --with-deps chromium
       - name: Configure
         run: |
           HASH=$(php -r "echo password_hash('ci-password', PASSWORD_DEFAULT);")
           cat > .env <<EOF
           APP_ENV=test
-          APP_BASE_PATH=/brochure
+          APP_BASE_PATH=
           APP_SECRET=ci-secret
           DB_DSN=pgsql:host=127.0.0.1;port=5432;dbname=lezhai_brochure
           DB_USER=postgres

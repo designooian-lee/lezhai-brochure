@@ -50,7 +50,11 @@ final class Auth
     public static function logout(): void
     {
         $_SESSION = [];
-        session_regenerate_id(true);
+        if (ini_get('session.use_cookies')) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', ['expires'=>time()-42000,'path'=>$params['path'],'domain'=>$params['domain'],'secure'=>$params['secure'],'httponly'=>$params['httponly'],'samesite'=>$params['samesite']?:'Lax']);
+        }
+        session_destroy();
     }
 
     public static function csrf(): string
@@ -63,10 +67,10 @@ final class Auth
 
     public static function verifyCsrf(): void
     {
-        if (!hash_equals($_SESSION['csrf'] ?? '', (string) ($_POST['_csrf'] ?? ''))) {
+        $stored=(string)($_SESSION['csrf']??'');$provided=(string)($_POST['_csrf']??'');
+        if ($stored==='' || $provided==='' || !hash_equals($stored,$provided)) {
             http_response_code(419);
             exit('页面已过期，请返回后重试。');
         }
     }
 }
-

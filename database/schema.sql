@@ -51,3 +51,58 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     blocked_until TIMESTAMPTZ,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS tutorials (
+    id BIGSERIAL PRIMARY KEY,
+    title VARCHAR(180) NOT NULL,
+    description VARCHAR(300) NOT NULL DEFAULT '',
+    body TEXT NOT NULL DEFAULT '',
+    cover_path TEXT NOT NULL DEFAULT '',
+    manual_priority INTEGER NOT NULL DEFAULT 0,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS tutorial_media (
+    id BIGSERIAL PRIMARY KEY,
+    tutorial_id BIGINT NOT NULL REFERENCES tutorials(id) ON DELETE CASCADE,
+    media_type VARCHAR(20) NOT NULL CHECK (media_type IN ('video','document')),
+    source_type VARCHAR(20) NOT NULL CHECK (source_type IN ('external','upload')),
+    title VARCHAR(180) NOT NULL DEFAULT '',
+    url TEXT NOT NULL DEFAULT '',
+    file_path TEXT NOT NULL DEFAULT '',
+    mime_type VARCHAR(100) NOT NULL DEFAULT '',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS tutorials_public_sort ON tutorials(is_active, manual_priority DESC, id DESC);
+CREATE INDEX IF NOT EXISTS tutorial_media_order ON tutorial_media(tutorial_id, sort_order DESC, id);
+
+CREATE TABLE IF NOT EXISTS articles (
+    id BIGSERIAL PRIMARY KEY,
+    title VARCHAR(180) NOT NULL,
+    slug VARCHAR(180) NOT NULL UNIQUE,
+    excerpt VARCHAR(500) NOT NULL DEFAULT '',
+    body_html TEXT NOT NULL DEFAULT '',
+    cover_path TEXT NOT NULL DEFAULT '',
+    seo_title VARCHAR(180) NOT NULL DEFAULT '',
+    meta_description VARCHAR(300) NOT NULL DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','published')),
+    published_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS articles_public_sort ON articles(status, published_at DESC, id DESC);
+
+CREATE TABLE IF NOT EXISTS article_monthly_views (
+    article_id BIGINT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    viewed_month DATE NOT NULL,
+    view_count BIGINT NOT NULL DEFAULT 0 CHECK (view_count >= 0),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (article_id, viewed_month)
+);
+
+CREATE INDEX IF NOT EXISTS article_monthly_views_hot ON article_monthly_views(viewed_month, view_count DESC, article_id);

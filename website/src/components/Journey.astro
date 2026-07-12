@@ -1,0 +1,14 @@
+---
+import { ChatCircleTextIcon, RulerIcon, FileTextIcon, CalendarCheckIcon, HeadsetIcon } from '@phosphor-icons/react';
+import { journey } from '../data/site';
+const icons = [ChatCircleTextIcon, RulerIcon, FileTextIcon, CalendarCheckIcon, HeadsetIcon];
+---
+<div class="journey-panel">
+  <h2 class="section-title">项目服务流程</h2>
+  <div class="journey-grid">
+    {journey.map(([number, title, description], index) => {
+      const Icon = icons[index];
+      return <article class="journey-item"><div class="journey-number">{number}</div><div><Icon size={30} weight="regular" aria-hidden="true" /><h3>{title}</h3></div><p>{description}</p></article>;
+    })}
+  </div>
+</div>

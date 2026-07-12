@@ -116,7 +116,9 @@ class HttpClient
         if (!$allowed) {
             throw new RuntimeException('暂不支持此图册来源域名。');
         }
-        foreach (gethostbynamel($host) ?: [] as $ip) {
+        $addresses=gethostbynamel($host);
+        if($addresses===false||$addresses===[])throw new RuntimeException('图册来源域名无法解析。');
+        foreach ($addresses as $ip) {
             if (!filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
                 throw new RuntimeException('拒绝访问内网或保留地址。');
             }

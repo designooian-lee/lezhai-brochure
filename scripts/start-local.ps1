@@ -1,5 +1,4 @@
 ﻿param(
-    [string]$ToolchainRoot = 'C:\Users\Lee\Documents\Codex\2026-07-10\php-8-3-postgresql',
     [switch]$NoBrowser,
     [switch]$SkipSeed
 )
@@ -15,11 +14,33 @@ $logs = Join-Path $project 'storage\logs'
 New-Item -ItemType Directory -Force -Path $runtime,$logs | Out-Null
 
 try {
-    $phpRoot = Join-Path $ToolchainRoot 'tools\php'
-    $pgBin = Join-Path $ToolchainRoot 'tools\postgresql\pgsql\bin'
-    $php = Join-Path $phpRoot 'php.exe'
-    if (-not (Test-Path $php)) { throw "找不到 PHP 工具链：$php" }
-    if (-not (Test-Path (Join-Path $pgBin 'psql.exe'))) { throw "找不到 PostgreSQL 工具链：$pgBin" }
+    $php = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Filter php.exe -Recurse -ErrorAction SilentlyContinue |
+        Where-Object FullName -match 'PHP\.PHP\.8\.3' |
+        Select-Object -First 1 -ExpandProperty FullName
+    if (-not $php) {
+        $php = Get-ChildItem "$env:LOCALAPPDATA\Programs\PHP\8.3*" -Filter php.exe -Recurse -ErrorAction SilentlyContinue |
+            Select-Object -First 1 -ExpandProperty FullName
+    }
+    if (-not $php -or -not (Test-Path $php)) { throw '找不到 PHP 8.3，请先安装 PHP 并重新运行。' }
+    $phpRoot = Split-Path -Parent $php
+    $pgBin = 'D:\Program Files\PostgreSQL\18\bin'
+    if (-not (Test-Path (Join-Path $pgBin 'psql.exe'))) { throw "找不到 PostgreSQL：$pgBin" }
+
+    $postgres = Join-Path $pgBin 'postgres.exe'
+    $databaseFirewallRule = Get-NetFirewallRule -DisplayName 'Lezhai Brochure PostgreSQL Localhost' -ErrorAction SilentlyContinue
+    $webFirewallRule = Get-NetFirewallRule -DisplayName 'Lezhai Brochure PHP Localhost' -ErrorAction SilentlyContinue
+    if (-not $databaseFirewallRule -or -not $webFirewallRule) {
+        Write-Host '首次启动需要允许数据库和网页服务的本机通信，请在弹出的窗口中选择“是”...'
+        $firewallHelper = Join-Path $PSScriptRoot 'allow-postgres-localhost.ps1'
+        $elevated = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList @(
+            '-NoProfile',
+            '-ExecutionPolicy', 'Bypass',
+            '-File', ('"' + $firewallHelper + '"'),
+            '-PostgresExecutable', ('"' + $postgres + '"'),
+            '-PhpExecutable', ('"' + $php + '"')
+        )
+        if ($elevated.ExitCode -ne 0) { throw '未能添加 PostgreSQL 本机通信规则，请重新启动并在权限提示中选择“是”。' }
+    }
 
     $template = Get-Content -Raw -Encoding UTF8 (Join-Path $project 'config\php.ini.template')
     $ini = Join-Path $runtime 'php.ini'
@@ -39,15 +60,58 @@ try {
     $edge = 'C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
     if (-not (Test-Path $edge)) { $edge = '' }
 
-    $ready = & (Join-Path $pgBin 'pg_isready.exe') -h 127.0.0.1 -p 5432 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host '正在初始化并启动 PostgreSQL...'
-        & (Join-Path $ToolchainRoot 'start-postgres.ps1')
+    $pgData = Join-Path $runtime 'postgres-data'
+    $pgPort = 55432
+    $passwordFile = Join-Path $runtime 'postgres-password.txt'
+    $pgLog = Join-Path $logs 'postgres.log'
+    $ready = & (Join-Path $pgBin 'pg_isready.exe') -h 127.0.0.1 -p $pgPort -t 1 2>$null
+    $databaseReady = $LASTEXITCODE -eq 0
+    $databaseProcessRunning = $false
+    if (Test-Path $pgData) {
+        & (Join-Path $pgBin 'pg_ctl.exe') -D $pgData status *> $null
+        $databaseProcessRunning = $LASTEXITCODE -eq 0
     }
-    $passwordFile = Join-Path $ToolchainRoot 'data\postgres-password.txt'
+    $postmasterPid = Join-Path $pgData 'postmaster.pid'
+    if (-not $databaseProcessRunning -and (Test-Path $postmasterPid)) {
+        $recordedPid = [int]((Get-Content -LiteralPath $postmasterPid -TotalCount 1).Trim())
+        $recordedProcess = Get-Process -Id $recordedPid -ErrorAction SilentlyContinue
+        if (-not $recordedProcess -or $recordedProcess.ProcessName -notlike 'postgres*') {
+            Write-Host '正在清理上次异常退出留下的数据库锁文件...'
+            Remove-Item -LiteralPath $postmasterPid -Force
+        }
+    }
+    if ($databaseProcessRunning -and -not $databaseReady) {
+        Write-Host '检测到旧端口或异常的 PostgreSQL 进程，正在安全重启...'
+        & (Join-Path $pgBin 'pg_ctl.exe') -D $pgData -m fast -w -t 20 stop
+        if ($LASTEXITCODE -ne 0) { throw '无法停止旧的 PostgreSQL 进程，请重新启动电脑后再试。' }
+        $databaseProcessRunning = $false
+    }
+    if (-not $databaseProcessRunning) {
+        Write-Host '正在初始化并启动 PostgreSQL...'
+        if (-not (Test-Path $pgData)) {
+            New-Item -ItemType Directory -Force -Path (Split-Path -Parent $pgData) | Out-Null
+            if (-not (Test-Path $passwordFile)) {
+                Set-Content -LiteralPath $passwordFile -Value 'admin' -NoNewline -Encoding ASCII
+            }
+            & (Join-Path $pgBin 'initdb.exe') -D $pgData -U postgres -A scram-sha-256 --pwfile=$passwordFile -E UTF8 --locale=C
+            if ($LASTEXITCODE -ne 0) { throw 'PostgreSQL 初始化失败。' }
+        }
+        & (Join-Path $pgBin 'pg_ctl.exe') -D $pgData -l $pgLog -o "-p $pgPort" -w -t 30 start
+        if ($LASTEXITCODE -ne 0) {
+            $detail = if (Test-Path $pgLog) { (Get-Content -Tail 12 -Encoding UTF8 $pgLog) -join "`n" } else { '没有生成数据库日志。' }
+            throw "PostgreSQL 启动失败。`n$detail"
+        }
+        $databaseProcessRunning = $true
+    } elseif (-not $databaseReady) {
+        Write-Host 'PostgreSQL 进程已存在，将直接执行数据库连接检查...'
+    }
     if (-not (Test-Path $passwordFile)) { throw 'PostgreSQL 密码文件不存在。' }
     $dbPassword = Get-Content -Raw $passwordFile
     $env:PGPASSWORD = $dbPassword
+    $env:PGCONNECT_TIMEOUT = '5'
+    $env:PGHOST = '127.0.0.1'
+    $env:PGPORT = [string]$pgPort
+    $env:DB_DSN = "pgsql:host=127.0.0.1;port=$pgPort;dbname=lezhai_brochure"
 
     $envFile = Join-Path $project '.env'
     $credentialFile = Join-Path $runtime 'local-login.txt'
@@ -59,7 +123,7 @@ try {
             'APP_ENV=local'
             'APP_BASE_PATH=/brochure'
             "APP_SECRET=$secret"
-            'DB_DSN=pgsql:host=127.0.0.1;port=5432;dbname=lezhai_brochure'
+            "DB_DSN=pgsql:host=127.0.0.1;port=$pgPort;dbname=lezhai_brochure"
             'DB_USER=postgres'
             "DB_PASSWORD=$dbPassword"
             'ADMIN_USERNAME=admin'
@@ -67,16 +131,59 @@ try {
             "NODE_BINARY=$($node.Replace([char]92,[char]47))"
             "BROWSER_EXECUTABLE=$($edge.Replace([char]92,[char]47))"
         ) | Set-Content -Encoding UTF8 $envFile
-        @("后台地址：http://127.0.0.1:8080/brochure/admin/login",'管理员：admin',"密码：$adminPassword") | Set-Content -Encoding UTF8 $credentialFile
+        @("后台地址：http://127.0.0.1:8080/admin/login",'管理员：admin',"密码：$adminPassword") | Set-Content -Encoding UTF8 $credentialFile
     }
 
-    $exists = & (Join-Path $pgBin 'psql.exe') -h 127.0.0.1 -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='lezhai_brochure'"
-    if ($exists -ne '1') {
-        & (Join-Path $pgBin 'createdb.exe') -h 127.0.0.1 -U postgres -E UTF8 lezhai_brochure
-        if ($LASTEXITCODE -ne 0) { throw '创建本地数据库失败。' }
+    $websiteIndex = Join-Path $project 'storage\website-dist\index.html'
+    if (-not (Test-Path $websiteIndex)) {
+        $pnpm = Get-Command pnpm.cmd -ErrorAction SilentlyContinue
+        if (-not $pnpm) {
+            $bundledPnpm = 'C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\bin\fallback\pnpm.cmd'
+            if (Test-Path $bundledPnpm) { $pnpm = Get-Item $bundledPnpm }
+        }
+        if (-not $pnpm) { throw '找不到 pnpm，请安装 Node.js 22 并启用 Corepack 后重新运行。' }
+        Write-Host '正在安装官网构建依赖并生成静态页面...'
+        & $pnpm.FullName install --frozen-lockfile
+        if ($LASTEXITCODE -ne 0) { throw 'pnpm 依赖安装失败。' }
+        & $pnpm.FullName run build:website
+        if ($LASTEXITCODE -ne 0) { throw '官网静态页面构建失败。' }
     }
-    & $php -c $ini (Join-Path $project 'scripts\migrate.php')
-    if ($LASTEXITCODE -ne 0) { throw '数据库迁移失败。' }
+
+    Write-Host '正在检查项目数据库...'
+    $dbCheckOut = Join-Path $logs 'database-check-output.log'
+    $dbCheckErr = Join-Path $logs 'database-check-error.log'
+    $dbHostFile = Join-Path $runtime 'database-host.txt'
+    Remove-Item -LiteralPath $dbHostFile -Force -ErrorAction SilentlyContinue
+    $dbCheck = Start-Process -FilePath $php -ArgumentList @('-c',$ini,(Join-Path $project 'scripts\ensure-database.php'),$dbHostFile) -WorkingDirectory $project -RedirectStandardOutput $dbCheckOut -RedirectStandardError $dbCheckErr -WindowStyle Hidden -PassThru
+    if (-not $dbCheck.WaitForExit(15000)) {
+        Stop-Process -Id $dbCheck.Id -Force -ErrorAction SilentlyContinue
+        throw "数据库检查超过 15 秒，已停止。请查看：$dbCheckErr"
+    }
+    $dbCheck.WaitForExit()
+    if (-not (Test-Path $dbHostFile)) {
+        $detail = if ((Test-Path $dbCheckErr) -and (Get-Item $dbCheckErr).Length -gt 0) { (Get-Content -Raw -Encoding UTF8 $dbCheckErr).Trim() } else { '数据库检查未返回连接地址。' }
+        throw "数据库检查失败：$detail"
+    }
+    $dbHost = (Get-Content -Raw -Encoding UTF8 $dbHostFile).Trim()
+    if ($dbHost -notin @('127.0.0.1','::1','localhost')) { throw '数据库检查未返回有效地址。' }
+    $env:PGHOST = $dbHost
+    $env:DB_DSN = "pgsql:host=$dbHost;port=$pgPort;dbname=lezhai_brochure"
+    Write-Host "数据库连接成功：$dbHost`:$pgPort"
+
+    Write-Host '正在执行数据库迁移...'
+    $migrateOut = Join-Path $logs 'migrate-output.log'
+    $migrateErr = Join-Path $logs 'migrate-error.log'
+    $migrate = Start-Process -FilePath $php -ArgumentList @('-c',$ini,(Join-Path $project 'scripts\migrate.php')) -WorkingDirectory $project -RedirectStandardOutput $migrateOut -RedirectStandardError $migrateErr -WindowStyle Hidden -PassThru
+    if (-not $migrate.WaitForExit(30000)) {
+        Stop-Process -Id $migrate.Id -Force -ErrorAction SilentlyContinue
+        throw "数据库迁移超过 30 秒，已停止。请查看：$migrateErr"
+    }
+    $migrate.WaitForExit()
+    $migrationCompleted = (Test-Path $migrateOut) -and ((Get-Content -Raw -Encoding UTF8 $migrateOut) -match '数据库迁移完成。')
+    if (-not $migrationCompleted) {
+        $detail = if ((Test-Path $migrateErr) -and (Get-Item $migrateErr).Length -gt 0) { (Get-Content -Raw -Encoding UTF8 $migrateErr).Trim() } else { '迁移脚本没有返回完成标志。' }
+        throw "数据库迁移失败：$detail"
+    }
     if (-not $SkipSeed) {
         Write-Host '正在核对初始图册，单次最多等待 4 分钟...'
         $seedOut = Join-Path $logs 'seed-output.log'
@@ -111,7 +218,7 @@ try {
         $process.Id | Set-Content -Encoding ASCII $pidFile
     }
 
-    $health = 'http://127.0.0.1:8080/brochure/health'
+    $health = 'http://127.0.0.1:8080/health'
     $healthy = $false
     for ($i=0; $i -lt 30; $i++) {
         try { $response = Invoke-RestMethod -Uri $health -TimeoutSec 2; if ($response.status -eq 'ok') { $healthy=$true; break } } catch {}
@@ -120,10 +227,15 @@ try {
     if (-not $healthy) { throw "平台未通过健康检查，请查看：$logs" }
     Write-Host ''
     Write-Host '乐宅.Life 图册选款平台已启动。' -ForegroundColor Green
-    Write-Host '前台：http://127.0.0.1:8080/brochure/'
-    Write-Host '后台：http://127.0.0.1:8080/brochure/admin/login'
+    Write-Host '官网：http://127.0.0.1:8080/'
+    Write-Host '官网文章：http://127.0.0.1:8080/articles'
+    Write-Host '后台：http://127.0.0.1:8080/admin/login'
+    Write-Host '图册：http://127.0.0.1:8080/brochure'
+    Write-Host '指纹锁教程：http://127.0.0.1:8080/brochure/tutorials'
+    Write-Host '图册文章：http://127.0.0.1:8080/brochure/articles'
+    Write-Host '健康检查：http://127.0.0.1:8080/health'
     Write-Host "登录凭据：$credentialFile"
-    if (-not $NoBrowser) { Start-Process 'http://127.0.0.1:8080/brochure/' }
+    if (-not $NoBrowser) { Start-Process 'http://127.0.0.1:8080/' }
 } catch {
     Write-Host ''
     Write-Host "启动失败：$($_.Exception.Message)" -ForegroundColor Red

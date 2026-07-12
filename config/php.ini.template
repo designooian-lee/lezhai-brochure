@@ -2,6 +2,7 @@
 extension_dir="{{EXT_DIR}}"
 extension=curl
 extension=fileinfo
+extension=gd
 extension=mbstring
 extension=openssl
 extension=pdo_pgsql

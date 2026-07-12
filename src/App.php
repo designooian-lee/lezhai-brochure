@@ -8,10 +8,14 @@ use RuntimeException;
 final class App
 {
     private CatalogService $catalogs;
+    private TutorialService $tutorials;
+    private ArticleService $articles;
 
     public function __construct()
     {
         $this->catalogs = new CatalogService(Database::connection());
+        $this->tutorials = new TutorialService(Database::connection());
+        $this->articles = new ArticleService(Database::connection());
     }
 
     public function run(string $path): void
@@ -23,6 +27,14 @@ final class App
                 $this->json(['status' => 'ok']);
             } elseif ($path === '/' && $method === 'GET') {
                 $this->home();
+            } elseif ($path === '/tutorials' && $method === 'GET') {
+                $this->tutorialsPage();
+            } elseif (preg_match('~^/tutorial/(\d+)$~', $path, $m) && $method === 'GET') {
+                $this->tutorialDetail((int)$m[1]);
+            } elseif ($path === '/articles' && $method === 'GET') {
+                $this->articlesPage();
+            } elseif (preg_match('~^/articles/([a-z0-9-]+)$~', $path, $m) && $method === 'GET') {
+                $this->brochureArticleDetail($m[1]);
             } elseif (preg_match('~^/catalog/(\d+)$~', $path, $m) && $method === 'GET') {
                 $this->home((int) $m[1]);
             } elseif (preg_match('~^/reader/(\d+)$~', $path, $m) && $method === 'GET') {
@@ -39,6 +51,24 @@ final class App
                 Auth::requireLogin(); $this->admin();
             } elseif ($path === '/admin/data' && $method === 'GET') {
                 Auth::requireLogin(); $this->dataManagement();
+            } elseif ($path === '/admin/articles/new') {
+                Auth::requireLogin(); $this->articleForm($method);
+            } elseif (preg_match('~^/admin/articles/(\d+)/preview$~', $path, $m) && $method==='GET') {
+                Auth::requireLogin(); $this->articlePreview((int)$m[1]);
+            } elseif (preg_match('~^/admin/articles/(\d+)/edit$~', $path, $m)) {
+                Auth::requireLogin(); $this->articleForm($method,(int)$m[1]);
+            } elseif (preg_match('~^/admin/articles/(\d+)/delete$~', $path, $m) && $method==='POST') {
+                Auth::requireLogin(); Auth::verifyCsrf(); $this->articles->delete((int)$m[1]); $this->flash('文章已删除。'); $this->redirectAdmin();
+            } elseif ($path === '/admin/articles/image' && $method==='POST') {
+                Auth::requireLogin(); Auth::verifyCsrf(); try{$this->json(['url'=>$this->articles->uploadBodyImage($_FILES['image']??[])]);}catch(RuntimeException $exception){http_response_code(422);$this->json(['error'=>$exception->getMessage()]);}
+            } elseif ($path === '/admin/tutorials/new') {
+                Auth::requireLogin(); $this->tutorialForm($method);
+            } elseif (preg_match('~^/admin/tutorials/(\d+)/edit$~', $path, $m)) {
+                Auth::requireLogin(); $this->tutorialForm($method,(int)$m[1]);
+            } elseif (preg_match('~^/admin/tutorials/(\d+)/delete$~', $path, $m) && $method==='POST') {
+                Auth::requireLogin(); Auth::verifyCsrf(); $this->tutorials->delete((int)$m[1]); $this->flash('教程已删除。'); $this->redirectAdmin();
+            } elseif (preg_match('~^/admin/tutorial-media/(\d+)/delete$~', $path, $m) && $method==='POST') {
+                Auth::requireLogin(); Auth::verifyCsrf(); $this->tutorials->deleteMedia((int)$m[1]); $this->flash('附件已删除。'); $this->redirectAdmin();
             } elseif ($path === '/admin/data/export' && $method === 'POST') {
                 Auth::requireLogin(); Auth::verifyCsrf(); $this->exportData();
             } elseif ($path === '/admin/data/import' && $method === 'POST') {
@@ -87,38 +117,30 @@ final class App
             $categoryId = null;
         }
         $catalogs = $this->catalogs->catalogs($categoryId);
-        $popular = $categoryId ? [] : $this->catalogs->popular(null);
         $categoryName = '全部图册';
         foreach ($categories as $category) {
             if ((int) $category['id'] === $categoryId) $categoryName = $category['name'];
         }
         ob_start(); ?>
         <header class="site-header">
-            <a class="brand-placeholder" href="<?= e(base_path()) ?>" aria-label="乐宅.Life 图册首页">
-                <span class="brand-cn">乐宅.Life</span><span class="brand-en">LEZHAI · 临时文字标识</span>
-            </a>
+            <a class="brand-placeholder" href="<?= e(base_path()) ?>" aria-label="乐宅.Life 图册首页"><span class="brand-cn">乐宅.Life</span></a>
             <div class="site-header-actions">
                 <p>把喜欢的门，装进生活</p>
                 <a class="header-link" href="https://www.lezhai.life/" target="_blank" rel="noopener noreferrer">进入官网</a>
             </div>
         </header>
+        <?= $this->publicNav('catalogs') ?>
         <main class="public-main">
             <nav class="category-tabs" aria-label="图册分类">
+                <button type="button" class="favorites-tab" data-favorites-filter aria-pressed="false">我的收藏 <span data-favorites-count>0</span></button>
                 <a class="<?= $categoryId ? '' : 'active' ?>" href="<?= e(base_path()) ?>">全部</a>
                 <?php foreach ($categories as $category): ?>
                     <a class="<?= $categoryId === (int) $category['id'] ? 'active' : '' ?>" href="<?= e(base_path('?category=' . $category['id'])) ?>"><?= e($category['name']) ?></a>
                 <?php endforeach; ?>
-                <button type="button" class="favorites-tab" data-favorites-filter aria-pressed="false">我的收藏 <span data-favorites-count>0</span></button>
             </nav>
-            <?php if ($popular): ?>
-                <section class="section-block hot-section">
-                    <div class="section-heading"><div><span class="eyebrow">POPULAR</span><h1><?= e($categoryName) ?>热门</h1></div><span class="section-note">按客户浏览热度</span></div>
-                    <div class="hot-row"><?php foreach ($popular as $i => $catalog) echo $this->card($catalog, true, $i + 1); ?></div>
-                </section>
-            <?php endif; ?>
             <section class="section-block">
                 <div class="section-heading"><div><span class="eyebrow">CATALOGS</span><h2><?= e($categoryName) ?></h2></div><span class="section-note"><?= count($catalogs) ?> 本</span></div>
-                <?php if ($catalogs): ?><div class="catalog-grid"><?php foreach ($catalogs as $catalog) echo $this->card($catalog); ?></div>
+                <?php if ($catalogs): ?><div class="catalog-grid" data-client-pagination="12"><?php foreach ($catalogs as $catalog) echo $this->card($catalog); ?></div><div class="public-pagination" data-client-pagination-nav></div>
                 <?php else: ?><div class="empty-card"><span>暂无图册</span><p>请稍后再来看看。</p></div><?php endif; ?>
                 <div class="empty-card favorites-empty" data-favorites-empty hidden><span>还没有收藏</span><p>点击图册卡片上的“收藏”，下次打开仍会保留。</p></div>
             </section>
@@ -126,6 +148,46 @@ final class App
         <aside class="warm-tip"><span aria-hidden="true">✦</span><strong>温馨提示</strong><span>看到喜欢的款式，直接截图发给客服</span></aside>
         <dialog id="reader-dialog" class="reader-dialog"<?php if ($autoOpen): ?> data-auto-reader-url="<?= e(base_path('reader/' . $autoOpen['id'])) ?>" data-auto-view-url="<?= e(base_path('view/' . $autoOpen['id'])) ?>" data-auto-title="<?= e($autoOpen['name']) ?>"<?php endif; ?>><div class="reader-toolbar"><button type="button" data-close-reader aria-label="关闭图册">‹ 返回选款</button><strong id="reader-title">正在打开图册</strong><a class="reader-contact" href="https://www.lezhai.life/contact/" target="_blank" rel="noopener noreferrer">联系我们</a></div><div id="reader-content" class="reader-content"><div class="reader-loading">正在载入图册…</div></div></dialog>
         <?php $this->layout($autoOpen ? $autoOpen['name'] : '图册选款', (string) ob_get_clean());
+    }
+
+    private function publicNav(string $active): string
+    {
+        return '<nav class="primary-nav" aria-label="主要导航"><a class="'.($active==='catalogs'?'active':'').'" href="'.e(base_path()).'">电子图册</a><a class="'.($active==='tutorials'?'active':'').'" href="'.e(base_path('tutorials')).'">指纹锁教程</a><a class="'.($active==='articles'?'active':'').'" href="'.e(base_path('articles')).'">文章</a></nav>';
+    }
+
+    private function articlesPage(): void
+    {
+        $result=$this->articles->page((int)($_GET['page']??1),8);$items=$result['items'];ob_start();?><header class="site-header"><a class="brand-placeholder" href="<?=e(base_path())?>"><span class="brand-cn">乐宅.Life</span></a><div class="site-header-actions"><p>好设计，更要好落地</p><a class="header-link" href="/articles">官网文章</a></div></header><?=$this->publicNav('articles')?><main class="public-main"><section class="section-block"><div class="section-heading"><div><span class="eyebrow">JOURNAL</span><h1>文章</h1></div><span class="section-note"><?=$result['total']?> 篇</span></div><?php if($items):?><div class="catalog-grid tutorial-grid"><?php foreach($items as $article):?><article class="catalog-card tutorial-card"><a class="catalog-open" href="<?=e(base_path('articles/'.$article['slug']))?>"><span class="cover-wrap"><?php if($article['cover_path']):?><img src="<?=e($article['cover_path'])?>" alt="<?=e($article['title'])?>封面" loading="lazy"><?php endif?></span><span class="card-copy"><small><?=e(date('Y.m.d',strtotime((string)$article['published_at'])))?></small><strong><?=e($article['title'])?></strong><span><?=e($article['excerpt'])?></span><i>阅读全文 <b>→</b></i></span></a></article><?php endforeach?></div><?=$this->publicPagination(base_path('articles'),$result['page'],$result['pages'])?><?php else:?><div class="empty-card"><span>文章正在整理中</span><p>欢迎稍后再来。</p></div><?php endif?></section></main><?php $this->layout('文章',(string)ob_get_clean(),false,'<link rel="canonical" href="https://lezhai.life/articles'.($result['page']>1?'?page='.$result['page']:'').'">');
+    }
+
+    private function brochureArticleDetail(string $slug): void
+    {
+        $preview=($_GET['preview']??'')==='1'&&Auth::check();$article=$this->articles->findBySlug($slug,$preview);
+        if(!$article){http_response_code(404);$this->layout('文章不存在','<main class="empty"><h1>文章不存在或尚未发布</h1></main>');return;}
+        $this->renderBrochureArticle($article,$preview);
+    }
+
+    private function renderBrochureArticle(array $article,bool $preview=false): void
+    {
+        $neighbors=$this->articles->neighbors($article);ob_start();?><header class="site-header"><a class="brand-placeholder" href="<?=e(base_path())?>"><span class="brand-cn">乐宅.Life</span></a></header><?=$this->publicNav('articles')?><main class="tutorial-detail"><a class="text-link" href="<?=e(base_path('articles'))?>">← 返回文章列表</a><article><div class="tutorial-title"><span class="eyebrow">JOURNAL</span><h1><?=e($article['title'])?></h1><p><?=e($article['excerpt'])?></p></div><?php if($article['cover_path']):?><img class="tutorial-hero" src="<?=e($article['cover_path'])?>" alt="<?=e($article['title'])?>"><?php endif?><div class="article-body rich-html"><?=$article['body_html']?></div><?=$this->articleNeighbors($neighbors,true)?></article></main><?php $canonical='<link rel="canonical" href="https://lezhai.life/articles/'.e($article['slug']).'">';$this->layout($article['seo_title']?:$article['title'],(string)ob_get_clean(),false,$canonical);
+    }
+
+    private function tutorialsPage(): void
+    {
+        $result=$this->slicePage($this->tutorials->all(),(int)($_GET['page']??1),8);$items=$result['items']; ob_start(); ?>
+        <header class="site-header"><a class="brand-placeholder" href="<?=e(base_path())?>"><span class="brand-cn">乐宅.Life</span></a><div class="site-header-actions"><p>好设计，更要好落地</p><a class="header-link" href="https://www.lezhai.life/" target="_blank" rel="noopener noreferrer">进入官网</a></div></header>
+        <?=$this->publicNav('tutorials')?>
+        <main class="public-main"><section class="section-block"><div class="section-heading"><div><span class="eyebrow">SMART LOCK GUIDES</span><h1>指纹锁教程</h1></div><span class="section-note"><?=$result['total']?> 篇</span></div>
+        <?php if($items):?><div class="catalog-grid tutorial-grid"><?php foreach($items as $t): $cover=$t['cover_path']?base_path(ltrim($t['cover_path'],'/')):base_path('assets/cover-placeholder.svg');?><article class="catalog-card tutorial-card" data-tutorial-id="<?=(int)$t['id']?>"><a class="catalog-open" href="<?=e(base_path('tutorial/'.$t['id']))?>"><span class="cover-wrap"><img src="<?=e($cover)?>" alt="<?=e($t['title'])?>封面" loading="lazy"></span><span class="card-copy"><small>指纹锁教程</small><strong><?=e($t['title'])?></strong><span><?=e($t['description']?:'查看完整安装与使用说明')?></span><i>查看教程 <b>→</b></i></span></a><div class="tutorial-card-actions"><button class="favorite-button" data-tutorial-favorite="<?=(int)$t['id']?>" aria-pressed="false"><span>♡</span> 收藏</button><button class="share-button" data-share-url="<?=e(base_path('tutorial/'.$t['id']))?>" data-share-title="<?=e($t['title'])?>"><span>↗</span> 分享</button></div></article><?php endforeach?></div><?=$this->publicPagination(base_path('tutorials'),$result['page'],$result['pages'])?><?php else:?><div class="empty-card"><span>暂无教程</span><p>教程整理后会在这里展示。</p></div><?php endif?></section></main>
+        <?php $this->layout('指纹锁教程',(string)ob_get_clean());
+    }
+
+    private function tutorialDetail(int $id): void
+    {
+        $t=$this->tutorials->find($id); if(!$t){http_response_code(404);$this->layout('教程不存在','<main class="empty"><h1>教程不存在或已隐藏</h1><a class="button" href="'.e(base_path('tutorials')).'">返回教程列表</a></main>');return;} ob_start();?>
+        <header class="site-header"><a class="brand-placeholder" href="<?=e(base_path())?>"><span class="brand-cn">乐宅.Life</span></a></header><?=$this->publicNav('tutorials')?>
+        <main class="tutorial-detail"><a class="text-link" href="<?=e(base_path('tutorials'))?>">← 返回指纹锁教程</a><article><div class="tutorial-title"><span class="eyebrow">SMART LOCK GUIDE</span><h1><?=e($t['title'])?></h1><p><?=e($t['description'])?></p><div class="tutorial-detail-actions"><button class="favorite-button inline" data-tutorial-favorite="<?=$id?>">♡ 收藏</button><button class="share-button inline" data-share-url="<?=e(base_path('tutorial/'.$id))?>" data-share-title="<?=e($t['title'])?>">↗ 分享</button></div></div><?php if($t['cover_path']):?><img class="tutorial-hero" src="<?=e(base_path(ltrim($t['cover_path'],'/')))?>" alt="<?=e($t['title'])?>"><?php endif?><div class="article-body"><?=nl2br(e($t['body']))?></div><?php foreach($t['media'] as $m):?><section class="tutorial-media"><h2><?=e($m['title']?:($m['media_type']==='video'?'视频教程':'教程文档'))?></h2><?php $src=$m['source_type']==='upload'?base_path(ltrim($m['file_path'],'/')):$m['url']; if($m['media_type']==='video'&&$m['source_type']==='upload'):?><video controls preload="metadata" src="<?=e($src)?>"></video><?php elseif($m['media_type']==='video'):?><a class="button" href="<?=e($src)?>" target="_blank" rel="noopener noreferrer">打开视频教程</a><?php elseif($m['mime_type']==='application/pdf'):?><iframe class="document-frame" src="<?=e($src)?>" title="<?=e($m['title'])?>"></iframe><a class="text-link" href="<?=e($src)?>" download>下载 PDF</a><?php else:?><a class="button secondary" href="<?=e($src)?>" download>下载教程文档</a><?php endif?></section><?php endforeach?></article></main>
+        <?php $this->layout($t['title'],(string)ob_get_clean());
     }
 
     private function card(array $catalog, bool $hot = false, int $rank = 0): string
@@ -198,12 +260,72 @@ final class App
 
     private function admin(): void
     {
-        $categories = $this->catalogs->categories(true); $catalogs = $this->catalogs->catalogs(null, true); $flash = $_SESSION['flash'] ?? ''; unset($_SESSION['flash']);
+        $allArticles=$this->articles->all(true); $categories=$this->catalogs->categories(true); $allCatalogs=$this->catalogs->catalogs(null,true); $allTutorials=$this->tutorials->all(true); $perPage=10;
+        $articlePage=max(1,(int)($_GET['article_page']??1));$catalogPage=max(1,(int)($_GET['catalog_page']??1)); $tutorialPage=max(1,(int)($_GET['tutorial_page']??1));
+        $articlePages=max(1,(int)ceil(count($allArticles)/$perPage));
+        $catalogPages=max(1,(int)ceil(count($allCatalogs)/$perPage)); $tutorialPages=max(1,(int)ceil(count($allTutorials)/$perPage));
+        $articlePage=min($articlePage,$articlePages);$catalogPage=min($catalogPage,$catalogPages); $tutorialPage=min($tutorialPage,$tutorialPages);
+        $articles=array_slice($allArticles,($articlePage-1)*$perPage,$perPage);$catalogs=array_slice($allCatalogs,($catalogPage-1)*$perPage,$perPage); $tutorials=array_slice($allTutorials,($tutorialPage-1)*$perPage,$perPage);
+        $flash=$_SESSION['flash']??''; unset($_SESSION['flash']);
         ob_start(); ?>
         <main class="admin-shell"><?= $this->adminHeader('管理总览') ?><?php if ($flash): ?><div class="notice success"><?= e($flash) ?></div><?php endif; ?><div class="admin-quick-links"><a class="button secondary" href="<?= e(base_path('admin/data')) ?>">数据导入导出</a></div>
-            <section class="admin-section"><div class="admin-heading"><div><h2>分类</h2><p>控制前台分类标签与显示顺序</p></div><a class="button" href="<?= e(base_path('admin/categories/new')) ?>">新增分类</a></div><div class="table-wrap"><table><thead><tr><th>名称</th><th>排序</th><th>图册</th><th>状态</th><th></th></tr></thead><tbody><?php foreach ($categories as $c): ?><tr><td><?= e($c['name']) ?></td><td><?= (int) $c['sort_order'] ?></td><td><?= (int) $c['catalog_count'] ?></td><td><span class="status <?= $c['is_active'] ? 'ok' : 'muted' ?>"><?= $c['is_active'] ? '显示中' : '已隐藏' ?></span></td><td class="actions"><a href="<?= e(base_path('admin/categories/' . $c['id'] . '/edit')) ?>">编辑</a><form method="post" action="<?= e(base_path('admin/categories/' . $c['id'] . '/delete')) ?>" onsubmit="return confirm('确定删除这个空分类吗？')"><input type="hidden" name="_csrf" value="<?= e(Auth::csrf()) ?>"><button type="submit">删除</button></form></td></tr><?php endforeach; ?></tbody></table></div></section>
+            <section class="admin-section"><div class="admin-heading"><div><h2>官网文章</h2><p>同一内容用于官网与图册平台，两套页面分别呈现</p></div><a class="button" href="<?=e(base_path('admin/articles/new'))?>">写文章</a></div><div class="table-wrap"><table><thead><tr><th>文章</th><th>网址标识</th><th>状态</th><th>发布时间</th><th></th></tr></thead><tbody><?php foreach($articles as $article):?><tr><td><strong><?=e($article['title'])?></strong><small><?=e($article['excerpt'])?></small></td><td><code><?=e($article['slug'])?></code></td><td><span class="status <?=$article['status']==='published'?'ok':'muted'?>"><?=$article['status']==='published'?'已发布':'草稿'?></span></td><td><?=e($article['published_at']?date('Y-m-d',strtotime((string)$article['published_at'])):'—')?></td><td class="actions"><a href="<?=e(base_path('admin/articles/'.$article['id'].'/edit'))?>">编辑</a><a href="/articles/<?=e($article['slug'])?>?preview=1" target="_blank">预览</a><form method="post" action="<?=e(base_path('admin/articles/'.$article['id'].'/delete'))?>" onsubmit="return confirm('确定删除这篇文章吗？')"><input type="hidden" name="_csrf" value="<?=e(Auth::csrf())?>"><button>删除</button></form></td></tr><?php endforeach?></tbody></table></div></section>
+            <section class="admin-section admin-fixed-section"><div class="admin-heading"><div><h2>分类</h2><p>控制前台分类标签与显示顺序</p></div><a class="button" href="<?= e(base_path('admin/categories/new')) ?>">新增分类</a></div><div class="table-wrap"><table><thead><tr><th>名称</th><th>排序</th><th>图册</th><th>状态</th><th></th></tr></thead><tbody><?php foreach ($categories as $c): ?><tr><td><?= e($c['name']) ?></td><td><?= (int) $c['sort_order'] ?></td><td><?= (int) $c['catalog_count'] ?></td><td><span class="status <?= $c['is_active'] ? 'ok' : 'muted' ?>"><?= $c['is_active'] ? '显示中' : '已隐藏' ?></span></td><td class="actions"><a href="<?= e(base_path('admin/categories/' . $c['id'] . '/edit')) ?>">编辑</a><form method="post" action="<?= e(base_path('admin/categories/' . $c['id'] . '/delete')) ?>" onsubmit="return confirm('确定删除这个空分类吗？')"><input type="hidden" name="_csrf" value="<?= e(Auth::csrf()) ?>"><button type="submit">删除</button></form></td></tr><?php endforeach; ?></tbody></table></div></section>
             <section class="admin-section"><div class="admin-heading"><div><h2>电子图册</h2><p>人工排序优先，同值按客户热度排列</p></div><a class="button" href="<?= e(base_path('admin/catalogs/new')) ?>">添加图册</a></div><div class="table-wrap"><table class="catalog-table"><thead><tr><th>图册</th><th>分类</th><th>来源</th><th>排序/热度</th><th>状态</th><th></th></tr></thead><tbody><?php foreach ($catalogs as $c): ?><tr><td><div class="table-catalog"><img src="<?= e($c['cover_path'] ? base_path(ltrim($c['cover_path'], '/')) : base_path('assets/cover-placeholder.svg')) ?>" alt=""><div><strong><?= e($c['name']) ?></strong><small><?= e($c['description']) ?></small></div></div></td><td><?= e($c['category_name']) ?></td><td><?= e($this->sourceLabel($c['source_type'])) ?></td><td><?= (int) $c['manual_priority'] ?> / <?= (int) $c['view_count'] ?></td><td><span class="status <?= $c['parse_status'] === 'ok' && $c['is_active'] ? 'ok' : 'muted' ?>"><?= $c['parse_status'] === 'ok' ? ($c['is_active'] ? '显示中' : '已隐藏') : '解析异常' ?></span><?php if ($c['parse_error']): ?><small class="error-text"><?= e($c['parse_error']) ?></small><?php endif; ?></td><td class="actions"><a href="<?= e(base_path('admin/catalogs/' . $c['id'] . '/edit')) ?>">编辑</a><form method="post" action="<?= e(base_path('admin/catalogs/' . $c['id'] . '/reparse')) ?>"><input type="hidden" name="_csrf" value="<?= e(Auth::csrf()) ?>"><button type="submit">重新解析</button></form><form method="post" action="<?= e(base_path('admin/catalogs/' . $c['id'] . '/download')) ?>"><input type="hidden" name="_csrf" value="<?= e(Auth::csrf()) ?>"><button type="submit">高清下载</button></form><form method="post" action="<?= e(base_path('admin/catalogs/' . $c['id'] . '/delete')) ?>" onsubmit="return confirm('确定删除这本图册吗？')"><input type="hidden" name="_csrf" value="<?= e(Auth::csrf()) ?>"><button type="submit">删除</button></form></td></tr><?php endforeach; ?></tbody></table></div></section>
+            <section class="admin-section admin-fixed-section"><div class="admin-heading"><div><h2>指纹锁教程</h2><p>管理文章、视频和文档附件</p></div><a class="button" href="<?=e(base_path('admin/tutorials/new'))?>">添加教程</a></div><div class="table-wrap"><table><thead><tr><th>教程</th><th>附件</th><th>排序</th><th>状态</th><th></th></tr></thead><tbody><?php foreach($tutorials as $t):?><tr><td><strong><?=e($t['title'])?></strong><small><?=e($t['description'])?></small></td><td><?=(int)$t['media_count']?></td><td><?=(int)$t['manual_priority']?></td><td><span class="status <?=$t['is_active']?'ok':'muted'?>"><?=$t['is_active']?'显示中':'已隐藏'?></span></td><td class="actions"><a href="<?=e(base_path('admin/tutorials/'.$t['id'].'/edit'))?>">编辑</a><form method="post" action="<?=e(base_path('admin/tutorials/'.$t['id'].'/delete'))?>" onsubmit="return confirm('确定删除这篇教程及全部附件吗？')"><input type="hidden" name="_csrf" value="<?=e(Auth::csrf())?>"><button>删除</button></form></td></tr><?php endforeach?></tbody></table></div></section>
+            <div class="admin-pagination-slot" data-pagination-heading="官网文章"><?=$this->pagination('article_page',$articlePage,$articlePages,['catalog_page'=>$catalogPage,'tutorial_page'=>$tutorialPage])?></div>
+            <div class="admin-pagination-slot" data-pagination-heading="电子图册"><?=$this->pagination('catalog_page',$catalogPage,$catalogPages,['article_page'=>$articlePage,'tutorial_page'=>$tutorialPage])?></div>
+            <div class="admin-pagination-slot" data-pagination-heading="指纹锁教程"><?=$this->pagination('tutorial_page',$tutorialPage,$tutorialPages,['article_page'=>$articlePage,'catalog_page'=>$catalogPage])?></div>
         </main><?php $this->layout('管理后台', (string) ob_get_clean(), true);
+    }
+
+    private function pagination(string $parameter,int $current,int $pages,array $preserve=[]): string
+    {
+        if($pages<=1)return '<span class="pagination-single">共 1 页</span>';
+        $html='<nav class="admin-pagination" aria-label="分页">';
+        for($page=1;$page<=$pages;$page++){ $query=$preserve; $query[$parameter]=$page; $html.='<a class="'.($page===$current?'active':'').'" '.($page===$current?'aria-current="page" ':'').'href="'.e(base_path('admin?'.http_build_query($query))).'">'.$page.'</a>'; }
+        return $html.'</nav>';
+    }
+
+    private function slicePage(array $items,int $page,int $perPage): array
+    {
+        $total=count($items);$pages=max(1,(int)ceil($total/$perPage));$page=min(max(1,$page),$pages);
+        return ['items'=>array_slice($items,($page-1)*$perPage,$perPage),'page'=>$page,'pages'=>$pages,'total'=>$total];
+    }
+
+    private function publicPagination(string $path,int $current,int $pages): string
+    {
+        if($pages<=1)return '';$html='<nav class="public-pagination" aria-label="分页">';
+        for($page=1;$page<=$pages;$page++)$html.='<a class="'.($page===$current?'active':'').'" '.($page===$current?'aria-current="page" ':'').'href="'.e($path.($page>1?'?page='.$page:'')).'">'.$page.'</a>';
+        return $html.'</nav>';
+    }
+
+    private function articleNeighbors(array $neighbors,bool $brochure): string
+    {
+        $html='<nav class="article-neighbors" aria-label="相邻文章">';
+        foreach(['previous'=>'上一篇','next'=>'下一篇'] as $key=>$label){$item=$neighbors[$key]??null;if(!$item)continue;$href=$brochure?base_path('articles/'.$item['slug']):'/articles/'.$item['slug'];$html.='<a class="'.$key.'" href="'.e($href).'"><span>'.$label.'</span><strong>'.e($item['title']).'</strong></a>';}
+        return $html.'</nav>';
+    }
+
+    private function articleForm(string $method, ?int $id=null): void
+    {
+        $article=$id?$this->articles->find($id):null;if($id&&!$article)throw new RuntimeException('文章不存在。');$error='';
+        if($method==='POST'){try{Auth::verifyCsrf();$saved=$this->articles->save($_POST,$_FILES['cover']??null,$id);$this->flash($id?'文章已更新。':'文章已创建。');header('Location: '.base_path('admin/articles/'.$saved.'/edit'));exit;}catch(\Throwable $exception){$error=$exception->getMessage();$article=array_merge($article??[],$_POST);}}
+        ob_start();?><main class="admin-shell"><?=$this->adminHeader($id?'编辑文章':'写文章')?><?php if($error):?><div class="notice error"><?=e($error)?></div><?php endif?><section class="form-card"><form method="post" enctype="multipart/form-data" data-article-form><input type="hidden" name="_csrf" value="<?=e(Auth::csrf())?>"><label>文章标题<input name="title" maxlength="180" required value="<?=e($article['title']??'')?>"></label><label>英文网址标识（可选）<input name="slug" maxlength="180" pattern="[a-z0-9-]*" placeholder="留空自动生成 article-编号" value="<?=e($article['slug']??'')?>"><small>留空将自动生成；发布后请勿修改，以免已有链接失效。</small></label><label>文章摘要<textarea name="excerpt" maxlength="500" rows="3"><?=e($article['excerpt']??'')?></textarea></label><label>封面图片<input type="file" name="cover" accept="image/jpeg,image/png,image/webp,image/gif"><small>建议尺寸：1200 × 675px，JPG/PNG/WebP，最大 8MB；未上传时自动使用正文第一张图片。</small></label><div class="rich-editor-field"><span>文章正文</span><div class="editor-toolbar" role="toolbar"><button type="button" data-command="bold">加粗</button><button type="button" data-block="h2">标题</button><button type="button" data-command="insertUnorderedList">列表</button><button type="button" data-link>链接</button><button type="button" data-image>插入图片</button><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-image-input hidden></div><div class="rich-editor" contenteditable="true" data-editor><?=($article['body_html']??'')?></div><textarea name="body_html" data-editor-source hidden><?=e($article['body_html']??'')?></textarea><small>支持选择、粘贴或拖拽图片；图片会自动压缩并保存到本站。</small></div><label>SEO 标题<input name="seo_title" maxlength="180" value="<?=e($article['seo_title']??'')?>"><small>留空时使用文章标题。</small></label><label>Meta Description<textarea name="meta_description" maxlength="300" rows="3"><?=e($article['meta_description']??'')?></textarea><small>留空时使用文章摘要。</small></label><label>发布状态<select name="status"><option value="draft" <?=($article['status']??'draft')==='draft'?'selected':''?>>草稿</option><option value="published" <?=($article['status']??'')==='published'?'selected':''?>>发布</option></select></label><div class="form-actions"><button class="button">保存文章</button><?php if($article):?><a class="button secondary" target="_blank" href="<?=e(base_path('admin/articles/'.$article['id'].'/preview?surface=website'))?>">预览官网版本</a><a class="button secondary" target="_blank" href="<?=e(base_path('admin/articles/'.$article['id'].'/preview?surface=brochure'))?>">预览图册版本</a><?php endif?><a class="button secondary" href="<?=e(base_path('admin'))?>">返回后台</a></div></form></section></main><?php $this->layout($id?'编辑文章':'写文章',(string)ob_get_clean(),true);
+    }
+
+    private function articlePreview(int $id): void
+    {
+        $article=$this->articles->find($id);if(!$article)throw new RuntimeException('文章不存在。');
+        if(($_GET['surface']??'website')==='brochure'){$this->renderBrochureArticle($article,true);return;}
+        (new WebsiteApp())->renderArticle($article,true);
+    }
+
+    private function tutorialForm(string $method, ?int $id=null): void
+    {
+        $t=$id?$this->tutorials->find($id,true):null;if($id&&!$t)throw new RuntimeException('教程不存在。');
+        if($method==='POST'){Auth::verifyCsrf();$saved=$this->tutorials->save($_POST,$_FILES,$id);$this->flash($id?'教程已更新。':'教程已添加。');header('Location: '.base_path('admin/tutorials/'.$saved.'/edit'));exit;}
+        ob_start();?><main class="admin-shell"><?=$this->adminHeader($id?'编辑教程':'添加教程')?><section class="form-card"><form method="post" enctype="multipart/form-data"><input type="hidden" name="_csrf" value="<?=e(Auth::csrf())?>"><label>教程标题<input name="title" maxlength="180" required value="<?=e($t['title']??'')?>"></label><label>一句话介绍<textarea name="description" maxlength="300" rows="3"><?=e($t['description']??'')?></textarea></label><label>文章正文<textarea name="body" rows="12"><?=e($t['body']??'')?></textarea><small>使用空行分段，前台会保留换行。</small></label><label>封面图片<input type="file" name="cover" accept="image/jpeg,image/png,image/webp"></label><label>人工排序值<input type="number" name="manual_priority" value="<?=(int)($t['manual_priority']??0)?>"></label><label class="check"><input type="checkbox" name="is_active" <?=!isset($t)||$t['is_active']?'checked':''?>> 在客户页面显示</label><fieldset class="media-fields"><legend>添加一个视频或文档（可选）</legend><label>类型<select name="media_type"><option value="">本次不添加</option><option value="video">视频</option><option value="document">文档</option></select></label><label>来源<select name="source_type"><option value="external">外部链接</option><option value="upload">自己上传</option></select></label><label>附件标题<input name="media_title" maxlength="180"></label><label>外部链接<input type="url" name="media_url" placeholder="https://"></label><label>上传文件<input type="file" name="media" accept="video/mp4,video/webm,application/pdf,.doc,.docx"><small>视频支持 MP4/WebM，文档支持 PDF/Word，单文件最大 500MB。</small></label><label>附件排序<input type="number" name="media_sort_order" value="0"></label></fieldset><div class="form-actions"><button class="button">保存<?= $id?'并添加附件':''?></button><a class="button secondary" href="<?=e(base_path('admin'))?>">返回后台</a></div></form></section><?php if($t&&$t['media']):?><section class="admin-section"><h2>现有附件</h2><div class="table-wrap"><table><tbody><?php foreach($t['media'] as $m):?><tr><td><?=e($m['title']?:'未命名附件')?></td><td><?=e($m['media_type']==='video'?'视频':'文档')?> · <?=e($m['source_type']==='upload'?'上传':'外链')?></td><td class="actions"><form method="post" action="<?=e(base_path('admin/tutorial-media/'.$m['id'].'/delete'))?>" onsubmit="return confirm('确定删除这个附件吗？')"><input type="hidden" name="_csrf" value="<?=e(Auth::csrf())?>"><button>删除</button></form></td></tr><?php endforeach?></tbody></table></div></section><?php endif?></main><?php $this->layout($id?'编辑教程':'添加教程',(string)ob_get_clean(),true);
     }
 
     private function categoryForm(string $method, ?int $id = null): void
@@ -279,19 +401,22 @@ final class App
         if (($_POST['confirm_replace'] ?? '') !== '1') throw new RuntimeException('请确认替换当前数据。');
         $file = $_FILES['data_file'] ?? null;
         if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) throw new RuntimeException('请选择有效的数据文件。');
-        $result = (new DataManager(Database::connection()))->importBackupZip((string) $file['tmp_name']);
-        $this->flash('导入完成：' . $result['categories'] . ' 个分类，' . $result['catalogs'] . ' 本图册，' . $result['local_pages'] . ' 张本地高清页面。');
+        $temporary=(string)($file['tmp_name']??'');$size=(int)($file['size']??0);
+        if($size<1||$size>2*1024*1024*1024||!is_uploaded_file($temporary))throw new RuntimeException('备份文件大小或来源无效。');
+        $mime=(new \finfo(FILEINFO_MIME_TYPE))->file($temporary);if(!in_array($mime,['application/zip','application/x-zip-compressed','application/octet-stream'],true))throw new RuntimeException('仅支持 ZIP 备份文件。');
+        $result = (new DataManager(Database::connection()))->importBackupZip($temporary);
+        $this->flash('导入完成：' . $result['categories'] . ' 个分类，' . $result['catalogs'] . ' 本图册，' . ($result['tutorials']??0) . ' 篇教程，' . $result['local_pages'] . ' 张本地高清页面。');
         header('Location: ' . base_path('admin/data')); exit;
     }
 
     private function adminHeader(string $title): string
     {
-        return '<header class="admin-header"><div><a class="brand-placeholder" href="' . e(base_path('admin')) . '"><span class="brand-cn">乐宅.Life</span><span class="brand-en">图册管理</span></a><h1>' . e($title) . '</h1></div><nav><a href="' . e(base_path('admin/data')) . '">数据管理</a><a href="' . e(base_path()) . '" target="_blank">查看客户页面</a><form method="post" action="' . e(base_path('admin/logout')) . '"><input type="hidden" name="_csrf" value="' . e(Auth::csrf()) . '"><button type="submit">退出</button></form></nav></header>';
+        return '<header class="admin-header"><div><a class="brand-placeholder" href="' . e(base_path('admin')) . '"><span class="brand-cn">乐宅.Life</span></a><h1>' . e($title) . '</h1></div><nav><a href="/" target="_blank">查看官网</a><a href="/brochure" target="_blank">查看图册</a><a href="' . e(base_path('admin/data')) . '">数据管理</a><form method="post" action="' . e(base_path('admin/logout')) . '"><input type="hidden" name="_csrf" value="' . e(Auth::csrf()) . '"><button type="submit">退出</button></form></nav></header>';
     }
 
-    private function layout(string $title, string $content, bool $admin = false): void
+    private function layout(string $title, string $content, bool $admin = false, string $head = ''): void
     {
-        ?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#C65D3B"><title><?= e($title) ?>｜乐宅.Life</title><link rel="stylesheet" href="<?= e(base_path('assets/app.css')) ?>"><link rel="stylesheet" href="<?= e(base_path('assets/mobile-fixes.css')) ?>"></head><body class="<?= $admin ? 'admin-body' : 'public-body' ?>"><?= $content ?><script src="<?= e(base_path('assets/app.js')) ?>" defer></script></body></html><?php
+        ?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#C65D3B"><title><?= e($title) ?>｜乐宅.Life</title><?=$head?><link rel="stylesheet" href="<?= e(base_path('assets/app.css')) ?>"><link rel="stylesheet" href="<?= e(base_path('assets/mobile-fixes.css')) ?>"></head><body class="<?= $admin ? 'admin-body' : 'public-body' ?>"><?= $content ?><footer class="app-copyright">© 2026 乐宅.Life</footer><script src="<?= e(base_path('assets/app.js')) ?>" defer></script></body></html><?php
     }
 
     private function sourceLabel(string $source): string { return ['yunzhan365'=>'云展网','goootu'=>'goootu','flbook'=>'FLBOOK'][$source] ?? $source; }

@@ -20,6 +20,10 @@ final class DataManager
             return $row;
         }, $rows);
         $views = $this->pdo->query('SELECT catalog_id,viewed_on,visitor_hash,created_at FROM catalog_daily_views ORDER BY catalog_id,viewed_on,visitor_hash')->fetchAll();
+        $tutorials = $this->pdo->query('SELECT id,title,description,body,cover_path,manual_priority,is_active FROM tutorials ORDER BY id')->fetchAll();
+        $tutorialMedia = $this->pdo->query('SELECT id,tutorial_id,media_type,source_type,title,url,file_path,mime_type,sort_order FROM tutorial_media ORDER BY id')->fetchAll();
+        $articles = $this->pdo->query('SELECT id,title,slug,excerpt,body_html,cover_path,seo_title,meta_description,status,published_at,created_at,updated_at FROM articles ORDER BY id')->fetchAll();
+        $articleMonthlyViews = $this->pdo->query('SELECT article_id,viewed_month,view_count,updated_at FROM article_monthly_views ORDER BY article_id,viewed_month')->fetchAll();
         return [
             'format' => 'lezhai-brochure-data',
             'version' => 1,
@@ -27,6 +31,10 @@ final class DataManager
             'categories' => $categories,
             'catalogs' => $catalogs,
             'daily_views' => $views,
+            'tutorials' => $tutorials,
+            'tutorial_media' => $tutorialMedia,
+            'articles' => $articles,
+            'article_monthly_views' => $articleMonthlyViews,
         ];
     }
 
@@ -54,6 +62,14 @@ final class DataManager
                     }
                 }
             }
+            foreach ($this->pdo->query('SELECT cover_path FROM tutorials UNION ALL SELECT file_path FROM tutorial_media')->fetchAll() as $asset) {
+                $path=(string)array_values($asset)[0];
+                if (str_starts_with($path,'/uploads/tutorials/')) { $file=dirname(__DIR__).'/public'.$path; if(is_file($file))$this->addStoredFile($zip,$file,'tutorials/'.basename($file)); }
+            }
+            foreach ($this->pdo->query('SELECT cover_path FROM articles')->fetchAll() as $asset) {
+                $path=(string)$asset['cover_path']; if(str_starts_with($path,'/uploads/articles/')){$file=dirname(__DIR__).'/public'.$path;if(is_file($file))$this->addStoredFile($zip,$file,'articles/'.basename($file));}
+            }
+            foreach(glob(dirname(__DIR__).'/public/uploads/articles/*')?:[] as $file)if(is_file($file)&&$zip->locateName('articles/'.basename($file))===false)$this->addStoredFile($zip,$file,'articles/'.basename($file));
         } catch (\Throwable $e) {
             $zip->close(); @unlink($target); throw $e;
         }
@@ -82,7 +98,7 @@ final class DataManager
                 $name = is_array($stat) ? (string) ($stat['name'] ?? '') : '';
                 $size = is_array($stat) ? (int) ($stat['size'] ?? 0) : 0;
                 if ($name === 'data.json' || str_ends_with($name, '/')) continue;
-                if (!preg_match('~^(covers/[A-Za-z0-9._-]+|local-pages/\d+/\d{4}\.(?:jpg|jpeg|png|webp))$~i', $name)) {
+                if (!preg_match('~^(covers/[A-Za-z0-9._-]+|tutorials/[A-Za-z0-9._-]+|articles/[A-Za-z0-9._-]+|local-pages/\d+/\d{4}\.(?:jpg|jpeg|png|webp))$~i', $name)) {
                     throw new RuntimeException('备份 ZIP 含有不允许的文件路径。');
                 }
                 $total += $size;
@@ -98,6 +114,10 @@ final class DataManager
             $result = $this->import($data);
             $coverRoot = dirname(__DIR__) . '/public/uploads/covers'; @mkdir($coverRoot, 0775, true);
             foreach (glob($staging . '/covers/*') ?: [] as $cover) if (is_file($cover)) @copy($cover, $coverRoot . '/' . basename($cover));
+            $tutorialRoot=dirname(__DIR__).'/public/uploads/tutorials'; @mkdir($tutorialRoot,0775,true);
+            foreach(glob($staging.'/tutorials/*')?:[] as $asset)if(is_file($asset))@copy($asset,$tutorialRoot.'/'.basename($asset));
+            $articleRoot=dirname(__DIR__).'/public/uploads/articles'; @mkdir($articleRoot,0775,true);
+            foreach(glob($staging.'/articles/*')?:[] as $asset)if(is_file($asset))@copy($asset,$articleRoot.'/'.basename($asset));
             $localRoot = dirname(__DIR__) . '/storage/local-pages'; @mkdir($localRoot, 0775, true);
             $restoredPages = 0;
             foreach (glob($staging . '/local-pages/*') ?: [] as $directory) {
@@ -139,7 +159,10 @@ final class DataManager
         $categories = $data['categories'] ?? null;
         $catalogs = $data['catalogs'] ?? null;
         $views = $data['daily_views'] ?? [];
-        if (!is_array($categories) || !is_array($catalogs) || !is_array($views) || count($categories) > 1000 || count($catalogs) > 10000 || count($views) > 500000) {
+        $tutorials=$data['tutorials']??[]; $tutorialMedia=$data['tutorial_media']??[];
+        $articles=$data['articles']??[];
+        $articleMonthlyViews=$data['article_monthly_views']??[];
+        if (!is_array($categories) || !is_array($catalogs) || !is_array($views) || !is_array($tutorials) || !is_array($tutorialMedia) || !is_array($articles) || !is_array($articleMonthlyViews) || count($categories) > 1000 || count($catalogs) > 10000 || count($views) > 500000 || count($tutorials)>10000 || count($tutorialMedia)>50000 || count($articles)>10000 || count($articleMonthlyViews)>500000) {
             throw new RuntimeException('数据文件结构或记录数量不正确。');
         }
 
@@ -168,10 +191,14 @@ final class DataManager
                 throw new RuntimeException('匿名浏览记录格式不正确。');
             }
         }
+        $articleIds=array_fill_keys(array_map(static fn(array $article):int=>(int)($article['id']??0),$articles),true);
+        foreach($articleMonthlyViews as $view){
+            if(!isset($articleIds[(int)($view['article_id']??0)])||!preg_match('/^\d{4}-\d{2}-01$/',(string)($view['viewed_month']??''))||(int)($view['view_count']??-1)<0)throw new RuntimeException('文章热点记录格式不正确。');
+        }
 
         $this->pdo->beginTransaction();
         try {
-            $this->pdo->exec('DELETE FROM catalog_daily_views; DELETE FROM catalogs; DELETE FROM categories');
+            $this->pdo->exec('DELETE FROM article_monthly_views; DELETE FROM articles; DELETE FROM tutorial_media; DELETE FROM tutorials; DELETE FROM catalog_daily_views; DELETE FROM catalogs; DELETE FROM categories');
             $categoryStatement = $this->pdo->prepare('INSERT INTO categories(id,name,slug,sort_order,is_active) VALUES(?,?,?,?,?)');
             foreach ($categories as $category) {
                 $categoryStatement->execute([
@@ -198,14 +225,22 @@ final class DataManager
             foreach ($views as $view) {
                 $viewStatement->execute([(int) $view['catalog_id'], (string) $view['viewed_on'], (string) $view['visitor_hash'], $view['created_at'] ?? date(DATE_ATOM)]);
             }
-            $this->pdo->exec("SELECT setval(pg_get_serial_sequence('categories','id'), COALESCE((SELECT MAX(id) FROM categories),1), EXISTS(SELECT 1 FROM categories)); SELECT setval(pg_get_serial_sequence('catalogs','id'), COALESCE((SELECT MAX(id) FROM catalogs),1), EXISTS(SELECT 1 FROM catalogs))");
+            $tutorialStatement=$this->pdo->prepare('INSERT INTO tutorials(id,title,description,body,cover_path,manual_priority,is_active) VALUES(?,?,?,?,?,?,?)');
+            foreach($tutorials as $tutorial)$tutorialStatement->execute([(int)$tutorial['id'],trim((string)$tutorial['title']),(string)($tutorial['description']??''),(string)($tutorial['body']??''),(string)($tutorial['cover_path']??''),(int)($tutorial['manual_priority']??0),$this->boolean($tutorial['is_active']??true)]);
+            $mediaStatement=$this->pdo->prepare('INSERT INTO tutorial_media(id,tutorial_id,media_type,source_type,title,url,file_path,mime_type,sort_order) VALUES(?,?,?,?,?,?,?,?,?)');
+            foreach($tutorialMedia as $media)$mediaStatement->execute([(int)$media['id'],(int)$media['tutorial_id'],(string)$media['media_type'],(string)$media['source_type'],(string)($media['title']??''),(string)($media['url']??''),(string)($media['file_path']??''),(string)($media['mime_type']??''),(int)($media['sort_order']??0)]);
+            $articleStatement=$this->pdo->prepare('INSERT INTO articles(id,title,slug,excerpt,body_html,cover_path,seo_title,meta_description,status,published_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)');
+            foreach($articles as $article)$articleStatement->execute([(int)$article['id'],(string)$article['title'],(string)$article['slug'],(string)($article['excerpt']??''),(string)($article['body_html']??''),(string)($article['cover_path']??''),(string)($article['seo_title']??''),(string)($article['meta_description']??''),($article['status']??'draft')==='published'?'published':'draft',$article['published_at']??null,$article['created_at']??date(DATE_ATOM),$article['updated_at']??date(DATE_ATOM)]);
+            $articleViewStatement=$this->pdo->prepare('INSERT INTO article_monthly_views(article_id,viewed_month,view_count,updated_at) VALUES(?,?,?,?)');
+            foreach($articleMonthlyViews as $view)$articleViewStatement->execute([(int)$view['article_id'],(string)$view['viewed_month'],(int)$view['view_count'],$view['updated_at']??date(DATE_ATOM)]);
+            $this->pdo->exec("SELECT setval(pg_get_serial_sequence('categories','id'), COALESCE((SELECT MAX(id) FROM categories),1), EXISTS(SELECT 1 FROM categories)); SELECT setval(pg_get_serial_sequence('catalogs','id'), COALESCE((SELECT MAX(id) FROM catalogs),1), EXISTS(SELECT 1 FROM catalogs)); SELECT setval(pg_get_serial_sequence('tutorials','id'), COALESCE((SELECT MAX(id) FROM tutorials),1), EXISTS(SELECT 1 FROM tutorials)); SELECT setval(pg_get_serial_sequence('tutorial_media','id'), COALESCE((SELECT MAX(id) FROM tutorial_media),1), EXISTS(SELECT 1 FROM tutorial_media)); SELECT setval(pg_get_serial_sequence('articles','id'), COALESCE((SELECT MAX(id) FROM articles),1), EXISTS(SELECT 1 FROM articles))");
             $this->pdo->commit();
         } catch (\Throwable $e) {
             $this->pdo->rollBack();
             throw $e;
         }
         $this->clearLocalPages();
-        return ['categories' => count($categories), 'catalogs' => count($catalogs)];
+        return ['categories' => count($categories), 'catalogs' => count($catalogs), 'tutorials'=>count($tutorials), 'articles'=>count($articles)];
     }
 
     private function boolean(mixed $value): bool

@@ -1,0 +1,11 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ContactForm from '../components/ContactForm';
+import { brand, siteConfig } from '../data/site';
+const title='预约门窗量尺与方案沟通｜乐宅.Life 惠州';
+const description='提交惠州门窗量尺、门窗方案或装修公司合作需求。乐宅.Life 将根据空间、现场和装修阶段确认下一步。';
+---
+<BaseLayout title={title} description={description} path="/contact/">
+  <section class="content-hero"><div class="container content-hero-box"><p class="eyebrow">MAKE AN APPOINTMENT</p><h1 class="page-title">先把需求说清楚，再一起确认下一步</h1><p class="lead">可以描述喜欢的效果、空间情况和装修阶段。我们会围绕真实现场判断适合的门窗方向。</p></div></section>
+  <section class="section--tight"><div class="container contact-grid"><div class="contact-copy"><h2 class="section-title">预约量尺</h2><p>{brand.category}</p><p class="lead">本页面不会公开你的信息。表单仅用于本次预约沟通。</p>{siteConfig.phone && <p><strong>电话：</strong><a href={`tel:${siteConfig.phone}`}>{siteConfig.phone}</a></p>}{siteConfig.address && <p><strong>地址：</strong>{siteConfig.address}</p>}{siteConfig.businessHours && <p><strong>营业时间：</strong>{siteConfig.businessHours}</p>}</div><ContactForm client:load endpoint={siteConfig.formEndpoint} apiKey={siteConfig.formApiKey} subject={siteConfig.formSubject} /></div></section>
+</BaseLayout>

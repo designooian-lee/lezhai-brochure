@@ -1,0 +1,39 @@
+---
+import { navigation } from '../data/site';
+import { ListIcon, XIcon } from '@phosphor-icons/react';
+const { path = '/' } = Astro.props;
+const active = (href: string) => href === '/' ? path === '/' : path.startsWith(href);
+---
+<header class="site-header">
+  <div class="container nav-shell">
+    <a href="/" aria-label="乐宅.Life 首页"><img class="brand-logo" src="/brand/logo-horizontal.png" alt="乐宅.Life" width="188" height="56" /></a>
+    <nav class="desktop-nav" aria-label="主导航">
+      {navigation.map((item) => <a class="nav-link" aria-current={active(item.href) ? 'page' : undefined} href={item.href}>{item.label}</a>)}
+      <a class="button nav-cta" href="/contact/">预约量尺</a>
+    </nav>
+    <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="mobile-navigation" aria-label="打开菜单">
+      <ListIcon className="menu-icon menu-icon--open" size={24} weight="bold" aria-hidden="true" />
+      <XIcon className="menu-icon menu-icon--close" size={24} weight="bold" aria-hidden="true" />
+    </button>
+  </div>
+  <nav class="mobile-panel" id="mobile-navigation" aria-label="移动导航" data-open="false">
+    {navigation.map((item) => <a class="nav-link" href={item.href}>{item.label}</a>)}
+    <a class="button" href="/contact/">预约量尺</a>
+  </nav>
+</header>
+<script>
+  const toggle = document.querySelector<HTMLButtonElement>('.menu-toggle');
+  const panel = document.querySelector<HTMLElement>('.mobile-panel');
+  toggle?.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', open ? '关闭菜单' : '打开菜单');
+    if (panel) panel.dataset.open = String(open);
+    document.body.classList.toggle('menu-open', open);
+  });
+  panel?.querySelectorAll('a').forEach((link) => link.addEventListener('click', () => {
+    toggle?.setAttribute('aria-expanded', 'false');
+    if (panel) panel.dataset.open = 'false';
+    document.body.classList.remove('menu-open');
+  }));
+</script>

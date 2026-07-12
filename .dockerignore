@@ -1,0 +1,10 @@
+.git
+.env
+node_modules
+storage/runtime
+storage/logs
+storage/downloads
+storage/local-pages
+storage/website-dist
+public/uploads
+website-source

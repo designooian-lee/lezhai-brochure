@@ -1,0 +1,10 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { brand } from '../data/site';
+const title='关于乐宅.Life｜惠州本地设计型门窗服务商';
+const description='乐宅.Life 关注门窗设计效果，也对现场量尺、安装配合与交付结果负责，让设计适合真实的家。';
+---
+<BaseLayout title={title} description={description} path="/about/">
+  <section class="content-hero"><div class="container content-hero-box"><p class="eyebrow">ABOUT LEZHAI</p><h1 class="page-title">建筑秩序作骨架，生活温度作表达</h1><p class="lead">{brand.category}。我们希望门窗不只是商品目录里的选项，而是能够与空间、现场和居住方式一起被认真判断的部分。</p></div></section>
+  <section class="section"><div class="container content-grid"><article class="content-main prose"><h2>我们关注什么</h2><p>先理解客户喜欢的效果，再判断它是否适合真实户型、墙体、尺寸、开向和使用方式。设计判断和现场判断需要同时成立。</p><h2>我们怎样工作</h2><p>从需求确认到现场量尺、方案报价、排期安装和验收售后，每个节点都需要留下清楚的信息和下一步。</p><h2>我们不怎样表达</h2><p>不依靠“顶级”“永远”“完全一致”等无法证明的承诺，也不把概念图包装成真实完工项目。专业感来自真实证据和清楚边界。</p></article><aside class="content-side info-panel"><img src="/brand/logo-signature.png" alt="乐宅.Life，把喜欢的门，装进生活" width="328" height="98" /><dl><dt>品牌主张</dt><dd>{brand.emotionalClaim}</dd><dt>专业主张</dt><dd>{brand.professionalClaim}</dd><dt>服务地域</dt><dd>{brand.region}</dd></dl></aside></div></section>
+</BaseLayout>

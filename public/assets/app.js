@@ -1,4 +1,54 @@
 (() => {
+  const articleForm = document.querySelector('[data-article-form]');
+  if (articleForm) {
+    const editor = articleForm.querySelector('[data-editor]');
+    const source = articleForm.querySelector('[data-editor-source]');
+    articleForm.addEventListener('submit', () => { source.value = editor.innerHTML; });
+    articleForm.querySelectorAll('[data-command]').forEach(button => button.addEventListener('click', () => {
+      document.execCommand(button.dataset.command, false); editor.focus();
+    }));
+    articleForm.querySelectorAll('[data-block]').forEach(button => button.addEventListener('click', () => {
+      document.execCommand('formatBlock', false, button.dataset.block); editor.focus();
+    }));
+    articleForm.querySelector('[data-link]')?.addEventListener('click', () => {
+      const url = window.prompt('请输入链接地址（https:// 或站内 / 路径）');
+      if (url) document.execCommand('createLink', false, url);
+    });
+    const imageInput = articleForm.querySelector('[data-image-input]');
+    articleForm.querySelector('[data-image]')?.addEventListener('click', () => imageInput.click());
+    const uploadEditorImage = async file => {
+      if (!file || !file.type.startsWith('image/')) return;
+      const data = new FormData();
+      data.append('_csrf', articleForm.querySelector('[name="_csrf"]').value);
+      data.append('image', file);
+      const response = await fetch('/admin/articles/image', { method: 'POST', body: data });
+      if (!response.ok) { window.alert('图片上传失败，请检查格式或大小。'); return; }
+      const result = await response.json();
+      editor.focus(); document.execCommand('insertImage', false, result.url);
+    };
+    imageInput?.addEventListener('change', async () => { await uploadEditorImage(imageInput.files?.[0]); imageInput.value = ''; });
+    editor.addEventListener('paste', event => {
+      const file = [...(event.clipboardData?.files || [])].find(item => item.type.startsWith('image/'));
+      if (file) { event.preventDefault(); uploadEditorImage(file); }
+    });
+    editor.addEventListener('dragover', event => { event.preventDefault(); editor.classList.add('is-dragging'); });
+    editor.addEventListener('dragleave', () => editor.classList.remove('is-dragging'));
+    editor.addEventListener('drop', event => {
+      editor.classList.remove('is-dragging');
+      const file = [...(event.dataTransfer?.files || [])].find(item => item.type.startsWith('image/'));
+      if (file) { event.preventDefault(); uploadEditorImage(file); }
+    });
+  }
+  document.querySelectorAll('[data-pagination-heading]').forEach(slot => {
+    const heading = [...document.querySelectorAll('.admin-section h2')].find(node => node.textContent.trim() === slot.dataset.paginationHeading);
+    if (heading) heading.closest('.admin-section')?.append(slot);
+  });
+  const categorySection = [...document.querySelectorAll('.admin-section')].find(section => section.querySelector('h2')?.textContent.trim() === '分类');
+  const tutorialSection = [...document.querySelectorAll('.admin-section')].find(section => section.querySelector('h2')?.textContent.trim() === '指纹锁教程');
+  if (categorySection && tutorialSection) {
+    const grid = document.createElement('div'); grid.className = 'admin-dual-grid';
+    categorySection.before(grid); grid.append(categorySection, tutorialSection);
+  }
   const dialog = document.querySelector('#reader-dialog');
   const content = document.querySelector('#reader-content');
   const title = document.querySelector('#reader-title');
@@ -20,8 +70,12 @@
     const buttons = [...document.querySelectorAll('[data-favorite-id]')];
     const filter = document.querySelector('[data-favorites-filter]');
     if (!buttons.length && !filter) return;
-    let favorites = readFavorites();
-    let filtering = false;
+    let favorites = readFavorites(); let filtering = false;
+    let currentPage = Math.max(1, Number(new URL(location.href).searchParams.get('page') || 1));
+    const grid = document.querySelector('[data-client-pagination]');
+    const perPage = Number(grid?.dataset.clientPagination || 12);
+    const cards = [...(grid?.querySelectorAll('.catalog-card') || [])];
+    const pager = document.querySelector('[data-client-pagination-nav]');
     const render = () => {
       buttons.forEach(button => {
         const saved = favorites.has(String(button.dataset.favoriteId));
@@ -32,31 +86,52 @@
       document.querySelectorAll('[data-favorites-count]').forEach(node => { node.textContent = favorites.size; });
       filter?.classList.toggle('active', filtering);
       filter?.setAttribute('aria-pressed', filtering ? 'true' : 'false');
-      document.querySelector('.hot-section')?.toggleAttribute('hidden', filtering);
-      let visible = 0;
-      document.querySelectorAll('.catalog-grid .catalog-card').forEach(card => {
-        const show = !filtering || favorites.has(String(card.dataset.catalogId));
+      const eligible = cards.filter(card => !filtering || favorites.has(String(card.dataset.catalogId)));
+      const pages = Math.max(1, Math.ceil(eligible.length / perPage)); currentPage = Math.min(currentPage, pages);
+      cards.forEach(card => {
+        const index = eligible.indexOf(card);
+        const show = index >= (currentPage - 1) * perPage && index < currentPage * perPage;
         card.toggleAttribute('hidden', !show);
-        if (show) visible++;
       });
       const empty = document.querySelector('[data-favorites-empty]');
-      if (empty) empty.hidden = !filtering || visible > 0;
+      if (empty) empty.hidden = !filtering || eligible.length > 0;
+      if (pager) {
+        pager.innerHTML = pages <= 1 ? '' : Array.from({length: pages}, (_, index) => `<button type="button" class="${index + 1 === currentPage ? 'active' : ''}" data-page="${index + 1}" ${index + 1 === currentPage ? 'aria-current="page"' : ''}>${index + 1}</button>`).join('');
+        pager.querySelectorAll('[data-page]').forEach(button => button.addEventListener('click', () => { currentPage = Number(button.dataset.page); const url=new URL(location.href);currentPage>1?url.searchParams.set('page',String(currentPage)):url.searchParams.delete('page');history.replaceState({},'',url);render();grid?.scrollIntoView({behavior:'smooth',block:'start'}); }));
+      }
     };
     buttons.forEach(button => button.addEventListener('click', () => {
       const id = String(button.dataset.favoriteId);
       favorites.has(id) ? favorites.delete(id) : favorites.add(id);
       writeFavorites(favorites); render();
     }));
-    filter?.addEventListener('click', () => { filtering = !filtering; render(); });
+    filter?.addEventListener('click', () => { filtering = !filtering; currentPage = 1; render(); });
     window.addEventListener('storage', event => { if (event.key === favoriteKey) { favorites = readFavorites(); render(); } });
     render();
   }
 
+  function initTutorialFavorites() {
+    const buttons = [...document.querySelectorAll('[data-tutorial-favorite]')];
+    if (!buttons.length) return;
+    const key = 'lezhai_tutorial_favorites_v1';
+    let saved;
+    try { saved = new Set(JSON.parse(localStorage.getItem(key) || '[]').map(String)); } catch (_) { saved = new Set(); }
+    const render = () => buttons.forEach(button => {
+      const active = saved.has(String(button.dataset.tutorialFavorite));
+      button.classList.toggle('saved', active); button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.innerHTML = `<span aria-hidden="true">${active ? '♥' : '♡'}</span> ${active ? '已收藏' : '收藏'}`;
+    });
+    buttons.forEach(button => button.addEventListener('click', () => {
+      const id = String(button.dataset.tutorialFavorite); saved.has(id) ? saved.delete(id) : saved.add(id);
+      try { localStorage.setItem(key, JSON.stringify([...saved])); } catch (_) {} render();
+    })); render();
+  }
+
   async function shareCatalog(button) {
     const url = new URL(button.dataset.shareUrl || location.href, location.origin).href;
-    const title = button.dataset.shareTitle || '乐宅.Life 电子图册';
+    const title = button.dataset.shareTitle || '乐宅.Life 内容分享';
     if (navigator.share) {
-      try { await navigator.share({ title, text: `查看这本电子图册：${title}`, url }); return; }
+      try { await navigator.share({ title, text: `查看乐宅.Life内容：${title}`, url }); return; }
       catch (error) { if (error?.name === 'AbortError') return; }
     }
     try {
@@ -67,7 +142,7 @@
       }
       const original = button.innerHTML; button.innerHTML = '<span aria-hidden="true">✓</span> 已复制，发给微信好友';
       button.classList.add('copied'); setTimeout(() => { button.innerHTML = original; button.classList.remove('copied'); }, 2200);
-    } catch (_) { window.prompt('复制下面的图册链接，发送给微信好友：', url); }
+    } catch (_) { window.prompt('复制下面的链接，发送给微信好友：', url); }
   }
 
   async function openReader(button) {
@@ -123,6 +198,7 @@
   document.querySelectorAll('[data-reader-url]').forEach(button => button.addEventListener('click', () => openReader(button)));
   document.querySelectorAll('[data-share-url]').forEach(button => button.addEventListener('click', () => shareCatalog(button)));
   initFavorites();
+  initTutorialFavorites();
   document.querySelector('[data-close-reader]')?.addEventListener('click', () => closeReader());
   window.addEventListener('popstate', () => closeReader(true));
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && dialog?.open) closeReader(); });

@@ -1,0 +1,11 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { brand } from '../data/site';
+const title='装修公司门窗合作｜惠州项目协作与稳定交付｜乐宅.Life';
+const description='乐宅.Life 为惠州本地装修公司提供门窗方案沟通、现场量尺、节点配合、安装交付和售后协作。';
+---
+<BaseLayout title={title} description={description} path="/cooperation/">
+  <section class="content-hero"><div class="container content-hero-box"><p class="eyebrow">PARTNER WITH LEZHAI</p><h1 class="page-title">门窗环节配合清楚，项目推进更省心</h1><p class="lead">面向惠州本地装修公司的合作入口：统一需求、明确节点、主动同步，减少项目经理、设计师和业主之间的反复协调。</p></div></section>
+  <section class="section"><div class="container"><p class="eyebrow">COOPERATION VALUE</p><h2 class="section-title">沟通清楚，交付稳定</h2><div class="value-grid"><article class="info-panel"><h3>需求与配置对齐</h3><p>把款式、尺寸、五金、颜色和服务范围记录清楚，减少口径不一致。</p></article><article class="info-panel"><h3>关键节点主动同步</h3><p>量尺、报价、排期、进场和验收都有明确负责人和下一步。</p></article><article class="info-panel"><h3>现场问题及时反馈</h3><p>发现条件变化时说明影响，并给出可以推进的处理建议。</p></article></div></div></section>
+  <section class="section--tight"><div class="container cta-panel"><div class="cta-copy"><p class="eyebrow">PROJECT COOPERATION</p><h2>需要稳定的门窗协作伙伴？</h2><p>告诉我们项目阶段与现场需求，再确认合作方式和响应节点。</p><a class="button button--light" href="/contact/">提交合作需求</a></div><div class="cta-copy" style="background:#252A28"><h2>{brand.professionalClaim}</h2><p>不承诺无法核实的速度和结果，只把需求、责任和进度说明清楚。</p></div></div></section>
+</BaseLayout>

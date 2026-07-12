@@ -1,0 +1,54 @@
+---
+import '../styles/global.css';
+import '../styles/overrides.css';
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import { brand, siteConfig } from '../data/site';
+
+interface Props {
+  title: string;
+  description: string;
+  path?: string;
+  image?: string;
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[];
+}
+
+const { title, description, path = '/', image = '/images/og-lezhai.jpg', jsonLd } = Astro.props;
+const canonical = new URL(path, brand.domain).toString();
+const socialImage = new URL(image, brand.domain).toString();
+const robots = siteConfig.isProduction ? 'index,follow,max-image-preview:large' : 'noindex,nofollow';
+const schemas = Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : [];
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta name="robots" content={robots} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" href="/brand/logo-icon.svg" type="image/svg+xml" />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta property="og:site_name" content={brand.name} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={socialImage} />
+    <meta property="og:image:alt" content={`${brand.name}｜${brand.emotionalClaim}`} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={socialImage} />
+    <meta name="theme-color" content="#F8F4EE" />
+    {schemas.map((schema) => <script is:inline type="application/ld+json" set:html={JSON.stringify(schema)} />)}
+  </head>
+  <body>
+    <a class="sr-only" href="#main-content">跳到主要内容</a>
+    <Header path={path} />
+    <main id="main-content"><slot /></main>
+    <Footer />
+  </body>
+</html>

@@ -1,0 +1,62 @@
+﻿---
+import { brand, siteConfig } from '../data/site';
+import { MapPinIcon, PhoneIcon } from '@phosphor-icons/react';
+
+const socialQrs = [
+  { label: '公众号', src: '/images/qr-official-account.jpg' },
+  { label: '抖音号', src: '/images/qr-douyin.png' },
+  { label: '小红书', src: '/images/qr-xiaohongshu.png' },
+];
+---
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="footer-brand-marks">
+          <a class="footer-logo-link" href="/" aria-label="返回乐宅.Life 首页">
+            <img class="footer-logo" src="/brand/logo-wordmark.png" alt="乐宅.Life 品牌字标" width="160" height="220" />
+          </a>
+          <div class="social-qr-list" aria-label="乐宅社交账号二维码">
+            {socialQrs.map((item) => (
+              <figure class="social-qr">
+                <img src={item.src} alt={`${item.label}二维码`} width="55" height="55" />
+                <figcaption>{item.label}</figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+        <p class="footer-copy">从喜欢的效果出发，也对量尺、安装与交付结果负责。</p>
+      </div>
+      <div>
+        <p class="footer-title">ARTICLES</p>
+        <nav class="footer-links footer-article-links" aria-label="最新文章">
+          <span data-latest-articles></span>
+        </nav>
+      </div>
+      <div>
+        <p class="footer-title">CONTACT</p>
+        <div class="footer-links">
+          <span>{brand.category}</span>
+          <a href="/contact/">提交预约需求</a>
+          {siteConfig.address && (
+            <span class="footer-contact-item">
+              <MapPinIcon size={18} weight="fill" aria-hidden="true" />
+              <span>{siteConfig.address}</span>
+            </span>
+          )}
+          {siteConfig.phone && (
+            <a class="footer-contact-item" href={`tel:${siteConfig.phone}`} aria-label={`联系电话 ${siteConfig.phone}`}>
+              <PhoneIcon size={18} weight="fill" aria-hidden="true" />
+              <span>{siteConfig.phone}</span>
+            </a>
+          )}
+          {siteConfig.businessHours && <span>{siteConfig.businessHours}</span>}
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© {new Date().getFullYear()} {brand.name}</span>
+      <span>{brand.domain.replace('https://','')} · <a href="/sitemap.xml">网站地图</a></span>
+    </div>
+  </div>
+</footer>
