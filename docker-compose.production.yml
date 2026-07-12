@@ -1,0 +1,34 @@
+name: lezhai-brochure
+
+services:
+  app:
+    image: ${LEZHAI_IMAGE}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:4327:8080"
+    env_file:
+      - /opt/apps/lezhai-brochure/.env
+    environment:
+      DB_DSN: pgsql:host=1Panel-postgresql-4AAi;port=5432;dbname=Website
+      DB_USER: Website
+    volumes:
+      - uploads:/app/public/uploads
+      - downloads:/app/storage/downloads
+      - local_pages:/app/storage/local-pages
+    networks:
+      - default
+      - onepanel
+    mem_limit: 320m
+
+networks:
+  onepanel:
+    external: true
+    name: 1panel-network
+
+volumes:
+  uploads:
+    name: lezhai-brochure-uploads
+  downloads:
+    name: lezhai-brochure-downloads
+  local_pages:
+    name: lezhai-brochure-local-pages

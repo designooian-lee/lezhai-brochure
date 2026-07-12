@@ -1,0 +1,107 @@
+name: Deploy Lezhai Brochure
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: lezhai-brochure-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-deploy:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lezhai_brochure
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: curl,fileinfo,gd,mbstring,openssl,pdo_pgsql,pgsql,zip
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check:website
+      - run: pnpm run build:website
+      - run: npx playwright install --with-deps chromium
+
+      - name: Configure tests
+        run: |
+          HASH=$(php -r "echo password_hash('ci-password', PASSWORD_DEFAULT);")
+          cat > .env <<EOF
+          APP_ENV=test
+          APP_BASE_PATH=
+          APP_SECRET=ci-secret
+          DB_DSN=pgsql:host=127.0.0.1;port=5432;dbname=lezhai_brochure
+          DB_USER=postgres
+          DB_PASSWORD=postgres
+          ADMIN_USERNAME=admin
+          ADMIN_PASSWORD_HASH=$HASH
+          NODE_BINARY=node
+          BROWSER_EXECUTABLE=
+          EOF
+
+      - name: PHP syntax check
+        run: find . -name '*.php' -not -path './node_modules/*' -print0 | xargs -0 -n1 php -l
+      - run: php scripts/migrate.php
+      - run: php scripts/seed.php
+      - run: php tests/run.php
+      - run: node tests/http-smoke.js
+        env:
+          TEST_ADMIN_PASSWORD: ci-password
+
+      - name: Build production image
+        run: |
+          docker build \
+            --build-arg PUBLIC_SITE_ENV=production \
+            --build-arg PUBLIC_FORM_ENDPOINT='${{ vars.PUBLIC_FORM_ENDPOINT }}' \
+            --build-arg PUBLIC_STATICFORMS_API_KEY='${{ secrets.PUBLIC_STATICFORMS_API_KEY }}' \
+            --build-arg PUBLIC_FORM_SUBJECT='${{ vars.PUBLIC_FORM_SUBJECT }}' \
+            --build-arg PUBLIC_PHONE='${{ vars.PUBLIC_PHONE }}' \
+            --build-arg PUBLIC_ADDRESS='${{ vars.PUBLIC_ADDRESS }}' \
+            --build-arg PUBLIC_BUSINESS_HOURS='${{ vars.PUBLIC_BUSINESS_HOURS }}' \
+            -t "lezhai-brochure:${GITHUB_SHA}" .
+          docker save "lezhai-brochure:${GITHUB_SHA}" | gzip -1 > lezhai-brochure-image.tar.gz
+          printf 'LEZHAI_IMAGE=lezhai-brochure:%s\n' "$GITHUB_SHA" > release.env
+          tar -czf lezhai-brochure-release.tgz docker-compose.production.yml release.env
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' '${{ secrets.VPS_SSH_KEY }}' > ~/.ssh/deploy_key
+          printf '%s\n' '${{ secrets.VPS_KNOWN_HOSTS }}' > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+
+      - name: Upload release
+        run: |
+          scp -i ~/.ssh/deploy_key -P '${{ secrets.VPS_PORT }}' lezhai-brochure-image.tar.gz '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/lezhai-brochure-image.tar.gz'
+          scp -i ~/.ssh/deploy_key -P '${{ secrets.VPS_PORT }}' lezhai-brochure-release.tgz '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/lezhai-brochure-release.tgz'
+          scp -i ~/.ssh/deploy_key -P '${{ secrets.VPS_PORT }}' scripts/ci/remote-publish.sh '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/remote-publish.sh'
+
+      - name: Publish on VPS
+        run: ssh -i ~/.ssh/deploy_key -p '${{ secrets.VPS_PORT }}' '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}' 'bash /tmp/remote-publish.sh'
+
+      - name: Smoke test
+        run: |
+          curl -fsS https://lezhai.life/ >/dev/null
+          curl -fsS https://lezhai.life/health >/dev/null
+          curl -fsS https://lezhai.life/brochure >/dev/null
+          curl -fsS https://lezhai.life/admin/login >/dev/null
