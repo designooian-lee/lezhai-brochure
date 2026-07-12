@@ -1,6 +1,7 @@
 {
   "name": "lezhai-life-platform",
   "private": true,
+  "packageManager": "pnpm@10.34.5",
   "scripts": {
     "build:website": "astro build --root website",
     "check:website": "astro check --root website"
