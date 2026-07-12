@@ -15,15 +15,17 @@ COPY website ./website
 RUN pnpm run build:website
 
 FROM php:8.3-fpm-alpine
-RUN apk add --no-cache libpq-dev libzip-dev icu-dev libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev nginx supervisor curl \
+RUN apk add --no-cache libpq-dev libzip-dev icu-dev libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev nginx supervisor curl nodejs chromium \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install pdo_pgsql pgsql zip intl gd \
     && mkdir -p /run/nginx /app/storage/runtime /app/storage/logs /app/public/uploads
 WORKDIR /app
 COPY . .
+COPY --from=website /app/node_modules ./node_modules
 COPY --from=website /app/storage/website-dist ./storage/website-dist
 COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
+ENV NODE_PATH=/app/node_modules BROWSER_EXECUTABLE=/usr/bin/chromium-browser
 RUN chown -R www-data:www-data storage public/uploads \
     && chmod +x scripts/container-entrypoint.sh
 EXPOSE 8080
