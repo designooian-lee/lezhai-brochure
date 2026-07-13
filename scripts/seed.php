@@ -7,10 +7,10 @@ $pdo = Lezhai\Database::connection();
 $pdo->exec("INSERT INTO categories(name, slug, sort_order, is_active) VALUES ('待整理', 'pending', 100, TRUE) ON CONFLICT(slug) DO NOTHING");
 $categoryId = (int) $pdo->query("SELECT id FROM categories WHERE slug='pending'")->fetchColumn();
 $urls = [
-    'https://book.yunzhan365.com/wxfu/egep/mobile/index.html',
+    'https://book.yunzhan365.com/wxfu/urim/mobile/index.html',
     'http://book.goootu.com/User/Magazine/MagazineView.aspx?id=51007',
-    'https://book.yunzhan365.com/glos/pitj/mobile/index.html',
-    'https://book.yunzhan365.com/pwww/tzyw/mobile/index.html',
+    'https://book.yunzhan365.com/wxfu/mtcg/mobile/index.html',
+    'https://book.yunzhan365.com/wxfu/jaos/mobile/index.html',
     'https://book.yunzhan365.com/wxfu/pmqy/mobile/index.html',
     'http://book.goootu.com/User/Magazine/MagazineView.aspx?id=29389',
     'http://book.goootu.com/User/Magazine/MagazineView.aspx?id=41867',
