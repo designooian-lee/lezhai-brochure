@@ -138,6 +138,7 @@ async function main() {
   const catalogEditHtml = await catalogEdit.text();
   assert(catalogEdit.status === 200 && catalogEditHtml.includes('name="reader_mode"') && catalogEditHtml.includes('本地高清页面'), '图册编辑页可选择原网页或本地图片');
   const catalogNew=await fetch(`${adminBase}/catalogs/new`,{headers:{cookie:adminJar.join('; ')}});const catalogNewHtml=await catalogNew.text();assert(catalogNew.status===200&&catalogNewHtml.includes('data-catalog-parse-form')&&catalogNewHtml.includes('data-catalog-save hidden'),'添加图册使用后台解析界面');
+  assert(/assets\/app\.(?:css|js)\?v=\d+/.test(catalogNewHtml),'后台静态资源带版本号，更新后不会命中旧缓存');
   const parseRequest=await fetch(`${adminBase}/catalog-parse-jobs`,{method:'POST',headers:{cookie:adminJar.join('; '),'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({_csrf:csrf,source_url:'https://flbook.com.cn/c/qa-smoke'})});const parseResult=await parseRequest.json();assert(parseRequest.status===202&&Number(parseResult.job_id)>0,'图册解析请求立即进入后台队列');
 
   const tutorialCreate=await fetch(`${adminBase}/tutorials/new`,{method:'POST',redirect:'manual',headers:{cookie:adminJar.join('; '),'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({_csrf:csrf,title:'QA 附件教程',is_active:'1'})});const tutorialId=tutorialCreate.headers.get('location').match(/tutorials\/(\d+)\/edit/)[1];

@@ -13,14 +13,14 @@ const sourceUrl = process.argv[2];
 const output = process.argv[3];
 const requested = Number(process.argv[4] || 0);
 const executablePath = process.argv[5] || process.env.BROWSER_EXECUTABLE || undefined;
-const batchSize = 6;
+const batchSize = 1;
 
 async function openBook(browser) {
-  const context = await browser.newContext({ viewport: { width: 1200, height: 1600 }, deviceScaleFactor: 1 });
+  const context = await browser.newContext({ viewport: { width: 1000, height: 1000 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   await page.goto(sourceUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForFunction(() => Array.isArray(window.fliphtml5_pages) && window.fliphtml5_pages.length > 0, null, { timeout: 60000 });
-  await page.mouse.click(600, 800);
+  await page.mouse.click(500, 500);
   await page.waitForTimeout(1000);
   await page.evaluate(() => {
     for (const node of document.querySelectorAll('body *')) {
@@ -78,7 +78,7 @@ async function capturePage(page, number) {
   if (!sourceUrl || !output) throw new Error('The catalog URL and output directory are required.');
   fs.mkdirSync(output, { recursive: true });
   const { chromium } = loadPlaywright();
-  const launchOptions = { headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-extensions', '--renderer-process-limit=1'], ...(executablePath ? { executablePath } : {}) };
+  const launchOptions = { headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-extensions', '--disable-background-networking', '--disable-software-rasterizer', '--renderer-process-limit=1', '--no-zygote', '--single-process', '--js-flags=--max-old-space-size=64'], ...(executablePath ? { executablePath } : {}) };
   let number = 1; let total = 0; let count = 0; let failures = 0;
   while (count === 0 || number <= count) {
     const browser = await chromium.launch(launchOptions);

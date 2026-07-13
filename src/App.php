@@ -484,7 +484,8 @@ final class App
 
     private function layout(string $title, string $content, bool $admin = false, string $head = ''): void
     {
-        ?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#C65D3B"><title><?= e($title) ?>｜乐宅.Life</title><?=$head?><link rel="stylesheet" href="<?= e(base_path('assets/app.css')) ?>"><link rel="stylesheet" href="<?= e(base_path('assets/mobile-fixes.css')) ?>"></head><body class="<?= $admin ? 'admin-body' : 'public-body' ?>"><?= $content ?><footer class="app-copyright">© 2026 乐宅.Life</footer><script src="<?= e(base_path('assets/app.js')) ?>" defer></script></body></html><?php
+        $assetVersion=(string)max((int)@filemtime(dirname(__DIR__).'/public/assets/app.css'),(int)@filemtime(dirname(__DIR__).'/public/assets/app.js'));
+        ?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#C65D3B"><title><?= e($title) ?>｜乐宅.Life</title><?=$head?><link rel="stylesheet" href="<?= e(base_path('assets/app.css').'?v='.$assetVersion) ?>"><link rel="stylesheet" href="<?= e(base_path('assets/mobile-fixes.css')) ?>"></head><body class="<?= $admin ? 'admin-body' : 'public-body' ?>"><?= $content ?><footer class="app-copyright">© 2026 乐宅.Life</footer><script src="<?= e(base_path('assets/app.js').'?v='.$assetVersion) ?>" defer></script></body></html><?php
     }
 
     private function sourceLabel(string $source): string { return ['yunzhan365'=>'云展网','goootu'=>'goootu','flbook'=>'FLBOOK'][$source] ?? $source; }
