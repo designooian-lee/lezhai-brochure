@@ -9,7 +9,7 @@ const php = process.env.PHP_BINARY || (process.platform === 'win32'
 const ini = path.join(root, 'storage', 'runtime', 'php.ini');
 const useExistingServer = process.env.USE_EXISTING_SERVER === '1';
 const port = process.env.SMOKE_PORT || (useExistingServer ? '8080' : '8081');
-const args = [...(fs.existsSync(ini) ? ['-c', ini] : []), '-S', `127.0.0.1:${port}`, path.join(root, 'public', 'router.php')];
+const args = [...(fs.existsSync(ini) ? ['-c', ini] : []), '-d', 'upload_max_filesize=500M', '-d', 'post_max_size=510M', '-S', `127.0.0.1:${port}`, path.join(root, 'public', 'router.php')];
 const server = useExistingServer ? null : spawn(php, args, { cwd: root, stdio: ['ignore','inherit','inherit'], windowsHide: true });
 const base = `http://127.0.0.1:${port}/brochure`;
 const siteRoot = `http://127.0.0.1:${port}`;
@@ -55,7 +55,9 @@ async function main() {
   assert(css.status === 200 && css.headers.get('content-type').startsWith('text/css'), '子目录样式资源以正确 MIME 返回');
   assert(cssText.includes('.status{white-space:nowrap}') && cssText.includes('max-height:520px') && cssText.includes('.category-tabs a{display:flex}'), '后台状态、八行高度上限和移动分类样式已加载');
   const js = await fetch(`${base}/assets/app.js`);
+  const jsText = await js.text();
   assert(js.status === 200 && js.headers.get('content-type').startsWith('application/javascript'), '子目录脚本资源以正确 MIME 返回');
+  assert(jsText.includes('data-media-upload') && jsText.includes('data-catalog-parse-form'), '后台附件上传与图册解析脚本已加载');
   const traversal = await fetch(`http://127.0.0.1:${port}/brochure/%2e%2e%2f.env`);
   const traversalBody = await traversal.text();
   assert(!traversalBody.includes('DB_PASSWORD=') && !traversalBody.includes('ADMIN_PASSWORD_HASH='), '路由器拒绝读取 public 目录之外的文件');
@@ -111,8 +113,8 @@ async function main() {
     headers: { cookie: adminJar.join('; '), 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ _csrf: csrf, title: 'QA 测试文章', slug: 'qa-article', excerpt: '用于自动验收', body_html: '<h2>安全正文</h2><p>本地验收内容</p><script>alert(1)</script>', seo_keywords: '门窗,安装', seo_title: 'QA SEO 标题', meta_description: 'QA SEO 描述', status: 'published' }),
   });
-  assert(articleCreate.status === 302, '后台可创建并发布文章');
-  const publishedId = articleCreate.headers.get('location').match(/articles\/(\d+)\/edit/)[1];
+  assert(articleCreate.status === 302 && articleCreate.headers.get('location')==='/admin', '发布文章保存后返回后台');
+  const adminWithPublished=await fetch(adminBase,{headers:{cookie:adminJar.join('; ')}});const adminWithPublishedHtml=await adminWithPublished.text();const publishedId=adminWithPublishedHtml.match(/<strong>QA 测试文章<\/strong>[\s\S]*?admin\/articles\/(\d+)\/edit/)[1];
   const publicArticle = await fetch(`${siteRoot}/articles/qa-article`);
   const publicArticleHtml = await publicArticle.text();
   assert(publicArticle.status === 200 && publicArticleHtml.includes('QA SEO 标题') && publicArticleHtml.includes('name="keywords" content="门窗,安装"') && !publicArticleHtml.includes('alert(1)'), '官网文章输出 SEO 并清理危险 HTML');
@@ -135,6 +137,16 @@ async function main() {
   const catalogEdit = await fetch(`${adminBase}/catalogs/1/edit`, { headers: { cookie: adminJar.join('; ') } });
   const catalogEditHtml = await catalogEdit.text();
   assert(catalogEdit.status === 200 && catalogEditHtml.includes('name="reader_mode"') && catalogEditHtml.includes('本地高清页面'), '图册编辑页可选择原网页或本地图片');
+  const catalogNew=await fetch(`${adminBase}/catalogs/new`,{headers:{cookie:adminJar.join('; ')}});const catalogNewHtml=await catalogNew.text();assert(catalogNew.status===200&&catalogNewHtml.includes('data-catalog-parse-form')&&catalogNewHtml.includes('data-catalog-save hidden'),'添加图册使用后台解析界面');
+  const parseRequest=await fetch(`${adminBase}/catalog-parse-jobs`,{method:'POST',headers:{cookie:adminJar.join('; '),'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({_csrf:csrf,source_url:'https://flbook.com.cn/c/qa-smoke'})});const parseResult=await parseRequest.json();assert(parseRequest.status===202&&Number(parseResult.job_id)>0,'图册解析请求立即进入后台队列');
+
+  const tutorialCreate=await fetch(`${adminBase}/tutorials/new`,{method:'POST',redirect:'manual',headers:{cookie:adminJar.join('; '),'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({_csrf:csrf,title:'QA 附件教程',is_active:'1'})});const tutorialId=tutorialCreate.headers.get('location').match(/tutorials\/(\d+)\/edit/)[1];
+  const tutorialEdit=await fetch(`${adminBase}/tutorials/${tutorialId}/edit`,{headers:{cookie:adminJar.join('; ')}});assert((await tutorialEdit.text()).includes('data-media-upload'),'教程编辑页使用独立附件表单');
+  const attachment=new FormData();attachment.append('_csrf',csrf);attachment.append('media_type','document');attachment.append('source_type','upload');attachment.append('media_title','14MB 测试文件');attachment.append('media_sort_order','3');attachment.append('media',new Blob([Buffer.from('%PDF-1.4\n'),Buffer.alloc(14*1024*1024)],{type:'application/pdf'}),'large.pdf');
+  const upload=await fetch(`${adminBase}/tutorials/${tutorialId}/media`,{method:'POST',headers:{cookie:adminJar.join('; ')},body:attachment});const uploadResult=await upload.json();assert(upload.status===200&&uploadResult.media.source_type==='upload','超过 PHP 默认 8MB 的附件可独立上传');
+  const orderData=new URLSearchParams({_csrf:csrf});orderData.append(`orders[${uploadResult.media.id}]`,'17');const orderResponse=await fetch(`${adminBase}/tutorials/${tutorialId}/media/order`,{method:'POST',headers:{cookie:adminJar.join('; '),'content-type':'application/x-www-form-urlencoded'},body:orderData});assert(orderResponse.status===200&&((await orderResponse.json()).ok),'附件排序原页保存');
+  const deleteMedia=await fetch(`${siteRoot}${uploadResult.delete_url}`,{method:'POST',headers:{cookie:adminJar.join('; '),'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({_csrf:csrf})});assert(deleteMedia.status===200&&((await deleteMedia.json()).ok),'附件删除返回 JSON 且无页面跳转');
+  await fetch(`${adminBase}/tutorials/${tutorialId}/delete`,{method:'POST',redirect:'manual',headers:{cookie:adminJar.join('; '),'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({_csrf:csrf})});
 
   const create = await fetch(`${adminBase}/categories/new`, {
     method: 'POST', redirect: 'manual',

@@ -3,6 +3,13 @@ declare(strict_types=1);
 
 require dirname(__DIR__) . '/src/bootstrap.php';
 
+if(PHP_SAPI!=='cli'&&(int)($_SERVER['CONTENT_LENGTH']??0)>510*1024*1024){
+    http_response_code(413);
+    if(str_contains((string)($_SERVER['HTTP_ACCEPT']??''),'application/json')){header('Content-Type: application/json; charset=utf-8');echo json_encode(['error'=>'上传内容超过 500MB 限制。'],JSON_UNESCAPED_UNICODE);}
+    else{header('Content-Type: text/html; charset=utf-8');echo '<!doctype html><meta charset="utf-8"><title>上传失败</title><main style="max-width:680px;margin:80px auto;font-family:sans-serif"><h1>上传文件过大</h1><p>单个附件最大支持 500MB，请选择较小的文件后重试。</p></main>';}
+    exit;
+}
+
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header('X-Frame-Options: SAMEORIGIN');

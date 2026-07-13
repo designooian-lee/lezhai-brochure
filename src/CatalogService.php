@@ -67,11 +67,28 @@ final class CatalogService
         return $stmt->fetch() ?: null;
     }
 
-    public function preview(string $url): array
+    public function preview(string $url,?callable $progress=null): array
     {
+        if($progress)$progress('parsing');
         $parsed=$this->parser->parse($url);
+        if($progress)$progress('caching_cover');
+        $parsed['cover_source_url']=$parsed['cover_url'];
         $parsed['cover_url']=$this->cacheCover($parsed['cover_url'],$parsed['pages']);
         return $parsed;
+    }
+
+    public function createFromParseJob(array $input,int $jobId): int
+    {
+        $this->pdo->beginTransaction();
+        try{
+            $statement=$this->pdo->prepare("SELECT * FROM catalog_jobs WHERE id=? AND job_type='parse' FOR UPDATE");$statement->execute([$jobId]);$job=$statement->fetch();
+            if(!$job||$job['status']!=='completed'||$job['catalog_id']!==null)throw new RuntimeException('解析任务不可用，请重新解析链接。');
+            $parsed=json_decode((string)$job['result_payload'],true);
+            if(!is_array($parsed)||empty($parsed['pages'])||empty($parsed['source_url']))throw new RuntimeException('解析结果不完整，请重新解析链接。');
+            $insert=$this->pdo->prepare("INSERT INTO catalogs(category_id,source_url,source_type,name,description,cover_path,cover_source_url,page_manifest,pdf_url,manual_priority,is_active,parse_status,parsed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'ok',NOW()) RETURNING id");
+            $insert->execute([(int)($input['category_id']??0),$parsed['source_url'],$parsed['source_type'],trim((string)(($input['name']??'')?:$parsed['title'])),trim((string)($input['description']??'')),(string)$parsed['cover_url'],(string)($parsed['cover_source_url']??''),json_encode($parsed['pages'],JSON_UNESCAPED_SLASHES),$parsed['pdf_url']??null,(int)($input['manual_priority']??0),isset($input['is_active'])]);
+            $catalogId=(int)$insert->fetchColumn();$this->pdo->prepare('UPDATE catalog_jobs SET catalog_id=? WHERE id=?')->execute([$catalogId,$jobId]);$this->pdo->commit();return $catalogId;
+        }catch(\Throwable $exception){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $exception;}
     }
 
     public function create(array $input): int
@@ -210,7 +227,7 @@ final class CatalogService
         $renderedPages = [];
         if ($catalog['source_type'] === 'yunzhan365' && $this->requiresBrowserRender($pages)) {
             $renderDir = $runtimeDir . '/yunzhan-' . $id . '-' . bin2hex(random_bytes(4));
-            $renderedPages = $this->renderYunzhanPages($catalog['source_url'], $renderDir, count($pages));
+            $renderedPages = $this->renderYunzhanPages($catalog['source_url'], $renderDir, count($pages), $progress);
         }
         $tmpZip = $target . '.tmp';
         @unlink($tmpZip);
@@ -393,7 +410,7 @@ final class CatalogService
         return false;
     }
 
-    private function renderYunzhanPages(string $url, string $outputDir, int $expected): array
+    private function renderYunzhanPages(string $url, string $outputDir, int $expected,?callable $progress=null): array
     {
         $node = Config::get('NODE_BINARY', 'node');
         $script = dirname(__DIR__) . '/scripts/yunzhan-export.js';
@@ -409,22 +426,17 @@ final class CatalogService
         stream_set_blocking($pipes[2], false);
         $stdout = '';
         $stderr = '';
-        $started = microtime(true);
-        $timedOut = false;
         $status = ['exitcode' => -1];
+        $progressBuffer='';
         do {
-            $stdout .= stream_get_contents($pipes[1]);
+            $chunk=stream_get_contents($pipes[1]);$stdout.=$chunk;$progressBuffer.=$chunk;
             $stderr .= stream_get_contents($pipes[2]);
+            while(($newline=strpos($progressBuffer,"\n"))!==false){$line=substr($progressBuffer,0,$newline);$progressBuffer=substr($progressBuffer,$newline+1);if($progress&&preg_match('~PAGE (\d+)/(\d+)~',$line,$match))$progress((int)$match[1],(int)$match[2],'rendering');}
             $status = proc_get_status($process);
             if (!$status['running']) break;
-            if (microtime(true) - $started > 240) {
-                proc_terminate($process);
-                $timedOut = true;
-                break;
-            }
             usleep(100000);
         } while (true);
-        $stdout .= stream_get_contents($pipes[1]);
+        $chunk=stream_get_contents($pipes[1]);$stdout.=$chunk;$progressBuffer.=$chunk;if($progress&&preg_match_all('~PAGE (\d+)/(\d+)~',$progressBuffer,$matches,PREG_SET_ORDER))foreach($matches as $match)$progress((int)$match[1],(int)$match[2],'rendering');
         $stderr .= stream_get_contents($pipes[2]);
         fclose($pipes[1]);
         fclose($pipes[2]);
@@ -432,15 +444,11 @@ final class CatalogService
         $code = proc_close($process);
         if ($code === -1) $code = $exitCode;
 
-        if ($timedOut) {
-            $this->removeRenderDirectory($outputDir);
-            throw new RuntimeException('云展网高清页面还原超过 4 分钟，已停止本次任务。');
-        }
         $files = glob($outputDir . '/*.png') ?: [];
         sort($files, SORT_STRING);
         if ($code !== 0 || count($files) !== $expected) {
             $this->removeRenderDirectory($outputDir);
-            $detail = trim($stderr) ?: trim($stdout);
+            $detail=trim($stderr)?:trim($stdout);if(str_contains($detail,'Target page, context or browser has been closed')||str_contains($detail,'TargetClosedError'))$detail='浏览器在还原页面时被关闭，已完成的页面会在重试时复用。';else $detail=mb_substr($detail,0,600);
             throw new RuntimeException('云展网高清页面还原失败（' . count($files) . '/' . $expected . ' 页）：' . $detail);
         }
         foreach ($files as $index => $file) {

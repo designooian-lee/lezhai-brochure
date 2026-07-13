@@ -25,6 +25,8 @@ COPY --from=website /app/node_modules ./node_modules
 COPY --from=website /app/storage/website-dist ./storage/website-dist
 COPY docker/nginx.conf /etc/nginx/http.d/default.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
+COPY docker/uploads.ini /usr/local/etc/php/conf.d/zz-lezhai-uploads.ini
+COPY docker/php-fpm-low-memory.conf /usr/local/etc/php-fpm.d/zz-lezhai-low-memory.conf
 ENV NODE_PATH=/app/node_modules BROWSER_EXECUTABLE=/usr/bin/chromium-browser
 RUN chown -R www-data:www-data storage public/uploads \
     && chmod +x scripts/container-entrypoint.sh

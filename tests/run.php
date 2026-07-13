@@ -16,6 +16,7 @@ check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE tab
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_name='catalogs' AND column_name IN ('reader_mode','local_page_count')")->fetchColumn() === 2, '本地阅读模式字段已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_name='articles' AND column_name='seo_keywords'")->fetchColumn() === 1, '文章 SEO 关键字字段已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='catalog_jobs'")->fetchColumn() === 1, '图册后台任务表已创建');
+check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.columns WHERE table_name='catalog_jobs' AND column_name IN ('source_url','result_payload')")->fetchColumn() === 2, '图册解析任务字段已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('tutorials','tutorial_media')")->fetchColumn() === 2, '指纹锁教程数据表已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='articles'")->fetchColumn() === 1, '官网文章数据表已创建');
 check((int)$pdo->query("SELECT COUNT(*) FROM information_schema.tables WHERE table_name='article_monthly_views'")->fetchColumn() === 1, '文章月度热点数据表已创建');
@@ -23,6 +24,12 @@ check(extension_loaded('gd'), 'GD 图片处理扩展已启用');
 check((int)$pdo->query('SELECT COUNT(*) FROM categories')->fetchColumn() >= 1, '至少有一个分类');
 check((int)$pdo->query('SELECT COUNT(DISTINCT source_type) FROM catalogs')->fetchColumn() >= 3, '已导入云展网、goootu、FLBOOK 三类样本');
 $jobCatalogId=(int)$pdo->query('SELECT id FROM catalogs ORDER BY id LIMIT 1')->fetchColumn();$jobService=new Lezhai\CatalogJobService($pdo);$firstJob=$jobService->enqueue($jobCatalogId);$sameJob=$jobService->enqueue($jobCatalogId);check((int)$firstJob['id']===(int)$sameJob['id'],'同一图册不会重复创建活动任务');$pdo->prepare('DELETE FROM catalog_jobs WHERE id=?')->execute([$firstJob['id']]);
+$parseSource='https://flbook.com.cn/c/qa-'.bin2hex(random_bytes(4));$parseJob=$jobService->enqueueParse($parseSource);$jobService->completeParse((int)$parseJob['id'],['source_url'=>$parseSource,'source_type'=>'flbook','title'=>'后台解析测试','description'=>'','cover_url'=>'/assets/cover-placeholder.svg','cover_source_url'=>'','pages'=>['https://example.com/1.jpg'],'pdf_url'=>null]);
+$parseCatalog=(new Lezhai\CatalogService($pdo))->createFromParseJob(['category_id'=>(int)$pdo->query('SELECT id FROM categories ORDER BY id LIMIT 1')->fetchColumn(),'name'=>'','description'=>'','is_active'=>'1'],(int)$parseJob['id']);check($parseCatalog>0,'已完成解析任务可直接创建图册');
+try{(new Lezhai\CatalogService($pdo))->createFromParseJob(['category_id'=>1,'name'=>''],(int)$parseJob['id']);check(false,'解析任务不能重复消费');}catch(Throwable $e){check(str_contains($e->getMessage(),'不可用'),'解析任务不能重复消费');}
+(new Lezhai\CatalogService($pdo))->delete($parseCatalog);
+
+$tutorials=new Lezhai\TutorialService($pdo);$tutorialId=$tutorials->save(['title'=>'附件接口测试','is_active'=>'1'],[],null);$media=$tutorials->addMedia($tutorialId,['media_type'=>'video','source_type'=>'external','media_url'=>'https://example.com/test.MP4?token=1','media_title'=>'测试附件','media_sort_order'=>2],[]);$tutorials->reorderMedia($tutorialId,[(int)$media['id']=>9]);$ordered=$tutorials->find($tutorialId,true);check((int)$ordered['media'][0]['sort_order']===9,'教程附件可独立添加并保存排序数字');$tutorials->deleteMedia((int)$media['id']);check(count($tutorials->find($tutorialId,true)['media'])===0,'教程附件可独立删除');$tutorials->delete($tutorialId);
 
 $parser = new Lezhai\CatalogParser();
 try { $parser->parse('https://example.com/book'); check(false, '未知域名被拒绝'); } catch (Throwable $e) { check(str_contains($e->getMessage(), '暂不支持'), '未知域名被拒绝'); }

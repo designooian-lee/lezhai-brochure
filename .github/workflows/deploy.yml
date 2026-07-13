@@ -78,6 +78,8 @@ jobs:
             --build-arg PUBLIC_ADDRESS='${{ vars.PUBLIC_ADDRESS }}' \
             --build-arg PUBLIC_BUSINESS_HOURS='${{ vars.PUBLIC_BUSINESS_HOURS }}' \
             -t "lezhai-brochure:${GITHUB_SHA}" .
+          docker run --rm --entrypoint php "lezhai-brochure:${GITHUB_SHA}" -r 'if(ini_get("upload_max_filesize")!=="500M"||ini_get("post_max_size")!=="510M"){fwrite(STDERR,"Unexpected upload limits\n");exit(1);}'
+          docker run --rm --entrypoint php-fpm "lezhai-brochure:${GITHUB_SHA}" -tt
           docker save "lezhai-brochure:${GITHUB_SHA}" | gzip -1 > lezhai-brochure-image.tar.gz
           printf 'LEZHAI_IMAGE=lezhai-brochure:%s\n' "$GITHUB_SHA" > release.env
           tar -czf lezhai-brochure-release.tgz docker-compose.production.yml release.env

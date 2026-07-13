@@ -10,6 +10,10 @@ while(true){
     $job=$jobs->claim();
     if(!$job){sleep(2);continue;}
     try{
+        if($job['job_type']==='parse'){
+            $result=$catalogs->preview((string)$job['source_url'],static function(string $phase)use($jobs,$job):void{$jobs->progress((int)$job['id'],0,0,$phase);});
+            $jobs->completeParse((int)$job['id'],$result);continue;
+        }
         $catalogs->buildLocalPages((int)$job['catalog_id'],static function(int $current,int $total,string $phase)use($jobs,$job):void{$jobs->progress((int)$job['id'],$current,$total,$phase);});
         $catalog=$catalogs->find((int)$job['catalog_id'],true);
         $jobs->complete((int)$job['id'],(string)($catalog['download_cache']??''));

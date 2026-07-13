@@ -211,7 +211,7 @@
     const progress = jobPanel.querySelector('[data-job-progress]');
     const error = jobPanel.querySelector('[data-job-error]');
     const download = jobPanel.querySelector('[data-job-download]');
-    const labels = { queued: '等待后台处理', preparing: '正在准备', downloading: '正在下载高清页面', extracting: '正在生成本地图片', packaging: '正在打包 ZIP', completed: '生成完成', failed: '生成失败' };
+    const labels = { queued: '等待后台处理', preparing: '正在准备', rendering: '正在还原高清页面', downloading: '正在下载高清页面', extracting: '正在生成本地图片', packaging: '正在打包 ZIP', completed: '生成完成', failed: '生成失败' };
     const poll = async () => {
       try {
         const response = await fetch(jobPanel.dataset.statusUrl, { headers: { Accept: 'application/json' } });
@@ -227,5 +227,87 @@
       } catch (_) { window.setTimeout(poll, 3000); }
     };
     poll();
+  }
+
+  const mediaPanel = document.querySelector('[data-tutorial-media]');
+  if (mediaPanel) {
+    const uploadForm = mediaPanel.querySelector('[data-media-upload]');
+    const orderForm = mediaPanel.querySelector('[data-media-order]');
+    const list = mediaPanel.querySelector('[data-media-list]');
+    const source = uploadForm.querySelector('[name="source_type"]');
+    const fileLabel = uploadForm.querySelector('[data-media-file]');
+    const urlLabel = uploadForm.querySelector('[data-media-url]');
+    const fileInput = uploadForm.querySelector('[name="media"]');
+    const submit = uploadForm.querySelector('[data-media-submit]');
+    const progressBox = uploadForm.querySelector('[data-upload-progress]');
+    const progress = progressBox.querySelector('progress');
+    const progressText = progressBox.querySelector('span');
+    const error = uploadForm.querySelector('[data-media-error]');
+    const syncSource = () => {
+      const uploading = source.value === 'upload';
+      fileLabel.hidden = !uploading; urlLabel.hidden = uploading;
+      submit.hidden = uploading && !fileInput.files?.length;
+      submit.textContent = uploading ? '上传附件' : '添加外链附件';
+    };
+    source.addEventListener('change', syncSource); fileInput.addEventListener('change', syncSource); syncSource();
+    const addRow = media => {
+      const row = document.createElement('tr'); row.dataset.mediaId = media.id;
+      const titleCell = document.createElement('td'); titleCell.textContent = media.title || '未命名附件';
+      const typeCell = document.createElement('td'); typeCell.textContent = `${media.media_type === 'video' ? '视频' : '文档'} · ${media.source_type === 'upload' ? '上传' : '外链'}`;
+      const orderCell = document.createElement('td'); const order = document.createElement('input'); order.className = 'media-order-input'; order.type = 'number'; order.name = `orders[${media.id}]`; order.value = media.sort_order || 0; order.setAttribute('aria-label', '附件排序'); orderCell.append(order);
+      const actionCell = document.createElement('td'); actionCell.className = 'actions'; const remove = document.createElement('button'); remove.type = 'button'; remove.dataset.mediaDeleteUrl = media.delete_url; remove.textContent = '删除'; actionCell.append(remove);
+      row.append(titleCell, typeCell, orderCell, actionCell); list.append(row);
+    };
+    uploadForm.addEventListener('submit', event => {
+      event.preventDefault(); error.hidden = true; submit.disabled = true; progressBox.hidden = false; progress.value = 0; progressText.textContent = '0%';
+      const request = new XMLHttpRequest(); request.open('POST', uploadForm.action); request.setRequestHeader('Accept', 'application/json');
+      request.upload.addEventListener('progress', upload => { if (!upload.lengthComputable) return; const percent = Math.round(upload.loaded / upload.total * 100); progress.value = percent; progressText.textContent = `${percent}%`; });
+      request.addEventListener('load', () => {
+        let result = {}; try { result = JSON.parse(request.responseText || '{}'); } catch (_) {}
+        if (request.status < 200 || request.status >= 300) { error.textContent = result.error || '附件上传失败。'; error.hidden = false; }
+        else { result.media.delete_url = result.delete_url; addRow(result.media); uploadForm.reset(); progress.value = 100; progressText.textContent = '已完成'; }
+        submit.disabled = false; syncSource();
+      });
+      request.addEventListener('error', () => { error.textContent = '网络中断，请重试。'; error.hidden = false; submit.disabled = false; });
+      request.send(new FormData(uploadForm));
+    });
+    orderForm.addEventListener('submit', async event => {
+      event.preventDefault(); const message = orderForm.querySelector('[data-order-message]');
+      try { const response = await fetch(orderForm.action, { method: 'POST', body: new FormData(orderForm), headers: { Accept: 'application/json' } }); const result = await response.json(); if (!response.ok) throw new Error(result.error || '保存失败。'); [...list.querySelectorAll('tr')].sort((first, second) => Number(second.querySelector('.media-order-input').value) - Number(first.querySelector('.media-order-input').value)).forEach(row => list.append(row)); message.textContent = '排序已保存。'; }
+      catch (failure) { message.textContent = failure.message; }
+    });
+    list.addEventListener('click', async event => {
+      const button = event.target.closest('[data-media-delete-url]'); if (!button || !confirm('确定删除这个附件吗？')) return;
+      const data = new FormData(); data.append('_csrf', orderForm.querySelector('[name="_csrf"]').value); button.disabled = true;
+      try { const response = await fetch(button.dataset.mediaDeleteUrl, { method: 'POST', body: data, headers: { Accept: 'application/json' } }); if (!response.ok) throw new Error('删除失败。'); button.closest('tr').remove(); }
+      catch (failure) { window.alert(failure.message); button.disabled = false; }
+    });
+  }
+
+  const parseForm = document.querySelector('[data-catalog-parse-form]');
+  if (parseForm) {
+    const button = parseForm.querySelector('[data-parse-submit]'); const save = parseForm.querySelector('[data-catalog-save]'); const panel = parseForm.querySelector('[data-parse-panel]'); const message = parseForm.querySelector('[data-parse-message]'); const error = parseForm.querySelector('[data-parse-error]'); const preview = parseForm.querySelector('[data-parse-preview]'); const jobInput = parseForm.querySelector('[name="parse_job_id"]');
+    const labels = { queued: '等待后台处理', preparing: '正在识别来源', parsing: '正在解析页面清单', caching_cover: '正在缓存封面', completed: '解析完成', failed: '解析失败' };
+    const poll = async (id, expectedUrl) => {
+      try {
+        const response = await fetch(`${parseForm.dataset.statusBase}${id}`, { headers: { Accept: 'application/json' } }); const data = await response.json(); if (!response.ok) throw new Error(data.error || '无法读取解析进度。');
+        if (parseForm.elements.source_url.value !== expectedUrl) { button.disabled = false; return; }
+        message.textContent = labels[data.job.phase] || data.job.phase;
+        if (data.job.status === 'failed') { error.textContent = data.job.error || '解析失败。'; error.hidden = false; button.disabled = false; button.textContent = '重新解析'; return; }
+        if (data.job.status !== 'completed') { window.setTimeout(() => poll(id, expectedUrl), 1200); return; }
+        const result = data.result; jobInput.value = id; error.hidden = true; panel.querySelector('progress').hidden = true; preview.hidden = false; preview.querySelector('img').src = result.cover_url; preview.querySelector('[data-parse-pages]').textContent = `解析成功 · ${result.pages.length} 页`; preview.querySelector('[data-parse-title]').textContent = result.title; preview.querySelector('[data-parse-description]').textContent = result.description || ''; preview.querySelector('[data-parse-source]').textContent = ({ yunzhan365: '云展网', goootu: 'goootu', flbook: 'FLBOOK' })[result.source_type] || result.source_type;
+        if (!parseForm.elements.name.value) parseForm.elements.name.value = result.title || ''; if (!parseForm.elements.description.value) parseForm.elements.description.value = result.description || '';
+        save.hidden = false; button.disabled = false; button.textContent = '重新解析';
+      } catch (failure) { error.textContent = failure.message; error.hidden = false; button.disabled = false; }
+    };
+    button.addEventListener('click', async () => {
+      const sourceUrl = parseForm.elements.source_url; if (!sourceUrl.reportValidity()) return;
+      const expectedUrl = sourceUrl.value;
+      button.disabled = true; save.hidden = true; preview.hidden = true; panel.hidden = false; panel.querySelector('progress').hidden = false; message.textContent = '正在加入后台队列'; error.hidden = true; jobInput.value = '';
+      const data = new FormData(); data.append('_csrf', parseForm.elements._csrf.value); data.append('source_url', expectedUrl);
+      try { const response = await fetch(parseForm.dataset.parseUrl, { method: 'POST', body: data, headers: { Accept: 'application/json' } }); const result = await response.json(); if (!response.ok) throw new Error(result.error || '无法创建解析任务。'); poll(result.job_id, expectedUrl); }
+      catch (failure) { error.textContent = failure.message; error.hidden = false; button.disabled = false; }
+    });
+    parseForm.elements.source_url.addEventListener('input', () => { jobInput.value = ''; save.hidden = true; preview.hidden = true; });
   }
 })();

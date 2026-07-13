@@ -37,8 +37,10 @@ ALTER TABLE catalogs ADD COLUMN IF NOT EXISTS local_page_count INTEGER NOT NULL 
 
 CREATE TABLE IF NOT EXISTS catalog_jobs (
     id BIGSERIAL PRIMARY KEY,
-    catalog_id BIGINT NOT NULL REFERENCES catalogs(id) ON DELETE CASCADE,
+    catalog_id BIGINT REFERENCES catalogs(id) ON DELETE CASCADE,
     job_type VARCHAR(20) NOT NULL DEFAULT 'local_pages',
+    source_url TEXT NOT NULL DEFAULT '',
+    result_payload JSONB,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     progress_current INTEGER NOT NULL DEFAULT 0,
     progress_total INTEGER NOT NULL DEFAULT 0,
@@ -49,6 +51,9 @@ CREATE TABLE IF NOT EXISTS catalog_jobs (
     started_at TIMESTAMPTZ,
     finished_at TIMESTAMPTZ
 );
+ALTER TABLE catalog_jobs ALTER COLUMN catalog_id DROP NOT NULL;
+ALTER TABLE catalog_jobs ADD COLUMN IF NOT EXISTS source_url TEXT NOT NULL DEFAULT '';
+ALTER TABLE catalog_jobs ADD COLUMN IF NOT EXISTS result_payload JSONB;
 CREATE UNIQUE INDEX IF NOT EXISTS catalog_jobs_one_active ON catalog_jobs(catalog_id) WHERE status IN ('pending','running');
 
 CREATE INDEX IF NOT EXISTS catalogs_public_sort ON catalogs(category_id, is_active, manual_priority DESC, view_count DESC);

@@ -37,14 +37,32 @@ final class TutorialService
         $values=[$title,trim((string)($input['description']??'')),trim((string)($input['body']??'')),$cover,(int)($input['manual_priority']??0),isset($input['is_active'])];
         if ($id) { $values[]=$id; $this->pdo->prepare('UPDATE tutorials SET title=?,description=?,body=?,cover_path=?,manual_priority=?,is_active=?,updated_at=NOW() WHERE id=?')->execute($values); }
         else { $stmt=$this->pdo->prepare('INSERT INTO tutorials(title,description,body,cover_path,manual_priority,is_active) VALUES(?,?,?,?,?,?) RETURNING id'); $stmt->execute($values); $id=(int)$stmt->fetchColumn(); }
-        $kind=(string)($input['media_type']??''); $source=(string)($input['source_type']??'');
-        if (in_array($kind,['video','document'],true) && in_array($source,['external','upload'],true)) {
-            $url=''; $path=''; $mime='';
-            if ($source==='external') { $url=trim((string)($input['media_url']??'')); if (!filter_var($url,FILTER_VALIDATE_URL) || !in_array(parse_url($url,PHP_URL_SCHEME),['http','https'],true)) throw new RuntimeException('请输入有效的 HTTPS/HTTP 媒体链接。'); }
-            else { $allowed=$kind==='video' ? ['video/mp4'=>'mp4','video/webm'=>'webm'] : ['application/pdf'=>'pdf','application/msword'=>'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document'=>'docx']; $path=$this->upload($files['media']??[],'media',$allowed,500*1024*1024); $mime=(new \finfo(FILEINFO_MIME_TYPE))->file(dirname(__DIR__).'/public'.$path)?:''; }
-            $this->pdo->prepare('INSERT INTO tutorial_media(tutorial_id,media_type,source_type,title,url,file_path,mime_type,sort_order) VALUES(?,?,?,?,?,?,?,?)')->execute([$id,$kind,$source,trim((string)($input['media_title']??'')),$url,$path,$mime,(int)($input['media_sort_order']??0)]);
-        }
         return $id;
+    }
+
+    public function addMedia(int $tutorialId,array $input,array $file): array
+    {
+        if (!$this->find($tutorialId,true)) throw new RuntimeException('教程不存在。');
+        $kind=(string)($input['media_type']??'');$source=(string)($input['source_type']??'');
+        if(!in_array($kind,['video','document'],true)||!in_array($source,['external','upload'],true))throw new RuntimeException('请选择附件类型和来源。');
+        $url='';$path='';$mime='';
+        if($source==='external'){
+            $url=trim((string)($input['media_url']??''));
+            if(!filter_var($url,FILTER_VALIDATE_URL)||!in_array(parse_url($url,PHP_URL_SCHEME),['http','https'],true))throw new RuntimeException('请输入有效的 HTTPS/HTTP 媒体链接。');
+        }else{
+            $allowed=$kind==='video'?['video/mp4'=>'mp4','video/webm'=>'webm']:['application/pdf'=>'pdf','application/msword'=>'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document'=>'docx'];
+            $path=$this->upload($file,'media',$allowed,500*1024*1024);$mime=(new \finfo(FILEINFO_MIME_TYPE))->file(dirname(__DIR__).'/public'.$path)?:'';
+        }
+        $statement=$this->pdo->prepare('INSERT INTO tutorial_media(tutorial_id,media_type,source_type,title,url,file_path,mime_type,sort_order) VALUES(?,?,?,?,?,?,?,?) RETURNING *');
+        $statement->execute([$tutorialId,$kind,$source,trim((string)($input['media_title']??'')),$url,$path,$mime,(int)($input['media_sort_order']??0)]);
+        return $statement->fetch();
+    }
+
+    public function reorderMedia(int $tutorialId,array $orders): void
+    {
+        if(!$this->find($tutorialId,true))throw new RuntimeException('教程不存在。');
+        $statement=$this->pdo->prepare('UPDATE tutorial_media SET sort_order=? WHERE id=? AND tutorial_id=?');
+        foreach($orders as $id=>$order)$statement->execute([(int)$order,(int)$id,$tutorialId]);
     }
 
     public function deleteMedia(int $id): void { $s=$this->pdo->prepare('SELECT file_path FROM tutorial_media WHERE id=?');$s->execute([$id]);$p=(string)$s->fetchColumn();$this->pdo->prepare('DELETE FROM tutorial_media WHERE id=?')->execute([$id]);if(str_starts_with($p,'/uploads/tutorials/'))@unlink(dirname(__DIR__).'/public'.$p); }
@@ -52,7 +70,8 @@ final class TutorialService
 
     private function upload(array $file,string $prefix,array $allowed,int $max): string
     {
-        if (($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK) throw new RuntimeException('请选择要上传的文件。');
+        $error=(int)($file['error']??UPLOAD_ERR_NO_FILE);if(in_array($error,[UPLOAD_ERR_INI_SIZE,UPLOAD_ERR_FORM_SIZE],true))throw new RuntimeException('上传文件超过 500MB 限制。');
+        if ($error!==UPLOAD_ERR_OK) throw new RuntimeException('请选择要上传的文件。');
         $size=(int)($file['size']??0);$temporary=(string)($file['tmp_name']??'');
         if ($size<1 || $size>$max) throw new RuntimeException('上传文件大小无效或超过限制。');
         if(!is_uploaded_file($temporary))throw new RuntimeException('上传文件来源无效。');

@@ -21,6 +21,17 @@ final class CatalogJobService
         } catch (\Throwable $exception) { if($this->pdo->inTransaction())$this->pdo->rollBack();throw $exception; }
     }
 
+    public function enqueueParse(string $url): array
+    {
+        $url=trim($url);if(!filter_var($url,FILTER_VALIDATE_URL)||!in_array(parse_url($url,PHP_URL_SCHEME),['http','https'],true))throw new RuntimeException('请输入有效的图册链接。');
+        $statement=$this->pdo->prepare("INSERT INTO catalog_jobs(job_type,source_url,phase) VALUES('parse',?,'queued') RETURNING *");$statement->execute([$url]);return $statement->fetch();
+    }
+
+    public function find(int $id): ?array
+    {
+        $statement=$this->pdo->prepare('SELECT * FROM catalog_jobs WHERE id=?');$statement->execute([$id]);return $statement->fetch()?:null;
+    }
+
     public function latest(int $catalogId): ?array
     {
         $statement=$this->pdo->prepare('SELECT * FROM catalog_jobs WHERE catalog_id=? ORDER BY id DESC LIMIT 1');$statement->execute([$catalogId]);return $statement->fetch()?:null;
@@ -45,6 +56,11 @@ final class CatalogJobService
     public function complete(int $id,string $artifact): void
     {
         $statement=$this->pdo->prepare("UPDATE catalog_jobs SET status='completed',phase='completed',artifact_path=?,finished_at=NOW() WHERE id=?");$statement->execute([$artifact,$id]);
+    }
+
+    public function completeParse(int $id,array $result): void
+    {
+        $statement=$this->pdo->prepare("UPDATE catalog_jobs SET status='completed',phase='completed',result_payload=?::jsonb,finished_at=NOW() WHERE id=?");$statement->execute([json_encode($result,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),$id]);
     }
 
     public function fail(int $id,\Throwable $exception): void
