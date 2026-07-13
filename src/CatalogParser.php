@@ -33,12 +33,8 @@ final class CatalogParser
         $url = "https://book.yunzhan365.com/{$m[1]}/{$m[2]}/mobile/index.html";
         $html = $this->http->get($url);
         $root = "https://book.yunzhan365.com/{$m[1]}/{$m[2]}";
-        try {
-            $pages = $this->configManifest($root);
-        } catch (\Throwable) {
-            $pages = [];
-        }
-        if ($pages === []) $pages = $this->browserManifest($url, $root);
+        $pages = $this->configManifest($root);
+        if ($pages === []) throw new RuntimeException('云展网页面配置中没有找到有效页面。');
         return [
             'source_type' => 'yunzhan365',
             'source_url' => $url,
@@ -149,60 +145,6 @@ final class CatalogParser
             'pages' => $pages,
             'pdf_url' => $pdf,
         ];
-    }
-
-    private function browserManifest(string $url, string $root): array
-    {
-        $node = Config::get('NODE_BINARY', 'node');
-        $script = dirname(__DIR__) . '/scripts/yunzhan-manifest.js';
-        $command = [$node, $script, $url, Config::get('BROWSER_EXECUTABLE')];
-        $pipes = [];
-        $process = @proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, dirname(__DIR__));
-        if (!is_resource($process)) {
-            throw new RuntimeException('无法启动云展网页面清单解析器。');
-        }
-        stream_set_blocking($pipes[1], false);
-        stream_set_blocking($pipes[2], false);
-        $stdout = '';
-        $stderr = '';
-        $started = microtime(true);
-        $timedOut = false;
-        $exitCode = -1;
-        do {
-            $stdout .= stream_get_contents($pipes[1]);
-            $stderr .= stream_get_contents($pipes[2]);
-            $status = proc_get_status($process);
-            if (!$status['running']) break;
-            if (microtime(true) - $started > 90) {
-                proc_terminate($process);
-                $timedOut = true;
-                break;
-            }
-            usleep(100000);
-        } while (true);
-        $stdout .= stream_get_contents($pipes[1]);
-        $stderr .= stream_get_contents($pipes[2]);
-        $exitCode = $status['exitcode'] ?? -1;
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-        $code = proc_close($process);
-        if ($timedOut) {
-            throw new RuntimeException('云展网页面清单解析超过 90 秒，已停止本次解析。');
-        }
-        if ($code === -1) $code = $exitCode;
-        $data = json_decode((string) $stdout, true);
-        if ($code !== 0 || !is_array($data) || ($data['pages'] ?? []) === []) {
-            $detail = trim((string) $stderr);
-            if (str_contains($detail, 'browser has been closed') || str_contains($detail, 'Target page, context or browser has been closed')) {
-                $detail = '浏览器在解析时被系统关闭，请稍后重试。';
-            } elseif (mb_strlen($detail) > 600) {
-                $detail = mb_substr($detail, 0, 600) . '…';
-            }
-            throw new RuntimeException('云展网页面清单解析失败：' . ($detail ?: '未返回有效页面清单。'));
-        }
-        return array_values(array_filter($data['pages'], static fn ($page) =>
-            str_starts_with($page, $root . '/files/large/') || str_starts_with($page, 'browser-render://')
-        ));
     }
 
     private function meta(string $html, string $name): string
