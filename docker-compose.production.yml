@@ -20,6 +20,10 @@ services:
       - default
       - onepanel
     mem_limit: 320m
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   onepanel:

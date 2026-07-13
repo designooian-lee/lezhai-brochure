@@ -27,6 +27,7 @@ rollback_site() {
 }
 
 trap rollback_site ERR
+trap 'rm -rf "$STAGE" "$IMAGE_ARCHIVE" "$RELEASE_ARCHIVE" /tmp/remote-publish.sh' EXIT
 
 [ "$SITE" = "/opt/1panel/www/sites/lezhai/index" ] || exit 10
 test -f "$ENV_FILE"
@@ -62,7 +63,13 @@ docker compose -p "$COMPOSE_PROJECT" \
 
 for attempt in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:4327/health >/dev/null; then
-    rm -rf "$STAGE" "$IMAGE_ARCHIVE" "$RELEASE_ARCHIVE" /tmp/remote-publish.sh
+    CURRENT_IMAGE="$(sed -n 's/^LEZHAI_IMAGE=//p' "$SITE/release.env" | tail -n 1)"
+    while IFS= read -r image; do
+      [ "$image" = "$CURRENT_IMAGE" ] || docker image rm "$image" || true
+    done < <(docker images lezhai-brochure --format '{{.Repository}}:{{.Tag}}')
+    for backup in "$SITE".backup-brochure-*; do
+      [ ! -d "$backup" ] || [ "$backup" = "$BACKUP" ] || rm -rf -- "$backup"
+    done
     echo "Published to $SITE"
     echo "Site backup: $BACKUP"
     echo "Database backup: $DB_BACKUP"
