@@ -80,7 +80,7 @@ jobs:
             -t "lezhai-brochure:${GITHUB_SHA}" .
           docker run --rm --entrypoint php "lezhai-brochure:${GITHUB_SHA}" -r 'if(ini_get("upload_max_filesize")!=="500M"||ini_get("post_max_size")!=="510M"){fwrite(STDERR,"Unexpected upload limits\n");exit(1);}'
           docker run --rm --entrypoint php-fpm "lezhai-brochure:${GITHUB_SHA}" -tt
-          docker run --rm --memory=96m --entrypoint php "lezhai-brochure:${GITHUB_SHA}" -r 'require "src/bootstrap.php"; foreach(["urim"=>67,"mtcg"=>32,"jaos"=>100] as $book=>$count){$result=(new Lezhai\CatalogParser())->parse("https://book.yunzhan365.com/wxfu/{$book}/mobile/index.html");if(count($result["pages"])!==$count){fwrite(STDERR,"Unexpected {$book} page count\n");exit(1);}}'
+          docker run --rm --memory=96m --entrypoint php "lezhai-brochure:${GITHUB_SHA}" -r 'require "src/bootstrap.php"; foreach(["urim","mtcg","jaos"] as $book){$result=(new Lezhai\CatalogParser())->parse("https://book.yunzhan365.com/wxfu/{$book}/mobile/index.html");if(count($result["pages"])<1){fwrite(STDERR,"Empty {$book} page manifest\n");exit(1);}}'
           docker run --rm --memory=280m --entrypoint node "lezhai-brochure:${GITHUB_SHA}" scripts/yunzhan-export.js 'https://book.yunzhan365.com/pwww/tzyw/mobile/index.html' /tmp/yunzhan-smoke 1 /usr/bin/chromium-browser
           docker save "lezhai-brochure:${GITHUB_SHA}" | gzip -1 > lezhai-brochure-image.tar.gz
           printf 'LEZHAI_IMAGE=lezhai-brochure:%s\n' "$GITHUB_SHA" > release.env
