@@ -19,7 +19,6 @@ $urls = [
     'https://flbook.com.cn/c/pjVkNtD843',
 ];
 $service = new Lezhai\CatalogService($pdo);
-$failed = 0;
 foreach ($urls as $index => $url) {
     $exists = $pdo->prepare('SELECT 1 FROM catalogs WHERE source_url=?');
     $exists->execute([$url]);
@@ -31,9 +30,7 @@ foreach ($urls as $index => $url) {
         echo '正在解析 ' . ($index + 1) . '/' . count($urls) . "...\n";
         $service->create(['category_id' => $categoryId, 'source_url' => $url, 'name' => '', 'description' => '', 'manual_priority' => 0, 'is_active' => '1']);
     } catch (Throwable $e) {
-        $failed++;
         fwrite(STDERR, "导入失败：{$url}\n{$e->getMessage()}\n");
     }
 }
 echo "初始图册导入完成。\n";
-exit($failed === 0 ? 0 : 1);
