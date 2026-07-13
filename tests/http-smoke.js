@@ -53,7 +53,7 @@ async function main() {
   const css = await fetch(`${base}/assets/app.css`);
   const cssText = await css.text();
   assert(css.status === 200 && css.headers.get('content-type').startsWith('text/css'), '子目录样式资源以正确 MIME 返回');
-  assert(cssText.includes('.status{white-space:nowrap}') && cssText.includes('height:460px') && cssText.includes('.category-tabs a{display:flex}'), '后台状态、固定高度和移动分类样式已加载');
+  assert(cssText.includes('.status{white-space:nowrap}') && cssText.includes('max-height:520px') && cssText.includes('.category-tabs a{display:flex}'), '后台状态、八行高度上限和移动分类样式已加载');
   const js = await fetch(`${base}/assets/app.js`);
   assert(js.status === 200 && js.headers.get('content-type').startsWith('application/javascript'), '子目录脚本资源以正确 MIME 返回');
   const traversal = await fetch(`http://127.0.0.1:${port}/brochure/%2e%2e%2f.env`);
@@ -119,6 +119,8 @@ async function main() {
   assert(publicArticleHtml.includes('热门文章') && publicArticleHtml.includes('article-hot-viewport'), '官网文章右侧显示月度热门文章滚动区');
   const brochureArticle = await fetch(`${base}/articles/qa-article`);
   assert(brochureArticle.status === 200 && (await brochureArticle.text()).includes('https://lezhai.life/articles/qa-article'), '图册文章 canonical 指向官网版本');
+  const brochureArticles = await fetch(`${base}/articles`);
+  assert(brochureArticles.status === 200 && (await brochureArticles.text()).includes('/brochure/assets/cover-placeholder.svg'), '图册文章无封面时自动显示占位封面');
   const sitemap = await fetch(`${siteRoot}/sitemap.xml`);
   assert(sitemap.status === 200 && (await sitemap.text()).includes('/articles/qa-article'), '站点地图包含已发布文章');
   for (const articleId of [draftId, publishedId]) { const articleRemove = await fetch(`${adminBase}/articles/${articleId}/delete`, { method: 'POST', redirect: 'manual', headers: { cookie: adminJar.join('; '), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ _csrf: csrf }) }); assert(articleRemove.status === 302, `后台可删除测试文章 ${articleId}`); }
