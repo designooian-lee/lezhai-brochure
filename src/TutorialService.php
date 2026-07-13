@@ -75,7 +75,14 @@ final class TutorialService
         $size=(int)($file['size']??0);$temporary=(string)($file['tmp_name']??'');
         if ($size<1 || $size>$max) throw new RuntimeException('上传文件大小无效或超过限制。');
         if(!is_uploaded_file($temporary))throw new RuntimeException('上传文件来源无效。');
-        $type=(new \finfo(FILEINFO_MIME_TYPE))->file($temporary);if(!isset($allowed[$type]))throw new RuntimeException('不支持这种文件格式。');
+        $type=(new \finfo(FILEINFO_MIME_TYPE))->file($temporary);
+        if(!isset($allowed[$type]) && $prefix==='media'){
+            $extension=strtolower(pathinfo((string)($file['name']??''),PATHINFO_EXTENSION));
+            $header=(string)file_get_contents($temporary,false,null,0,12);
+            if($extension==='mp4' && substr($header,4,4)==='ftyp' && isset($allowed['video/mp4']))$type='video/mp4';
+            elseif($extension==='webm' && str_starts_with($header,"\x1A\x45\xDF\xA3") && isset($allowed['video/webm']))$type='video/webm';
+        }
+        if(!isset($allowed[$type]))throw new RuntimeException('不支持这种文件格式。');
         $dir=dirname(__DIR__).'/public/uploads/tutorials';@mkdir($dir,0775,true);$name=$prefix.'-'.bin2hex(random_bytes(12)).'.'.$allowed[$type];if(!move_uploaded_file($file['tmp_name'],$dir.'/'.$name))throw new RuntimeException('文件上传失败。');return '/uploads/tutorials/'.$name;
     }
 }

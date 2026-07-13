@@ -159,7 +159,13 @@ final class CatalogParser
         if ($code === -1) $code = $exitCode;
         $data = json_decode((string) $stdout, true);
         if ($code !== 0 || !is_array($data) || ($data['pages'] ?? []) === []) {
-            throw new RuntimeException('云展网页面清单解析失败：' . trim((string) $stderr));
+            $detail = trim((string) $stderr);
+            if (str_contains($detail, 'browser has been closed') || str_contains($detail, 'Target page, context or browser has been closed')) {
+                $detail = '浏览器在解析时被系统关闭，请稍后重试。';
+            } elseif (mb_strlen($detail) > 600) {
+                $detail = mb_substr($detail, 0, 600) . '…';
+            }
+            throw new RuntimeException('云展网页面清单解析失败：' . ($detail ?: '未返回有效页面清单。'));
         }
         return array_values(array_filter($data['pages'], static fn ($page) =>
             str_starts_with($page, $root . '/files/large/') || str_starts_with($page, 'browser-render://')
