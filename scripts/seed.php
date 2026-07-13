@@ -18,8 +18,8 @@ $urls = [
     'https://flbook.com.cn/c/pjVkNtD843',
 ];
 $service = new Lezhai\CatalogService($pdo);
-$obsolete = $pdo->prepare('SELECT id FROM catalogs WHERE source_url IN (?,?,?,?)');
-$obsolete->execute(['https://book.yunzhan365.com/wxfu/egep/mobile/index.html','https://book.yunzhan365.com/glos/pitj/mobile/index.html','https://book.yunzhan365.com/pwww/tzyw/mobile/index.html','https://book.yunzhan365.com/lbbc/uvjq/mobile/index.html']);
+$obsolete = $pdo->prepare('SELECT id FROM catalogs WHERE source_url=?');
+$obsolete->execute(['https://book.yunzhan365.com/lbbc/uvjq/mobile/index.html']);
 foreach ($obsolete->fetchAll(PDO::FETCH_COLUMN) as $id) $service->delete((int) $id);
 foreach ($urls as $index => $url) {
     $exists = $pdo->prepare('SELECT 1 FROM catalogs WHERE source_url=?');

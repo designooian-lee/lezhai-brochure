@@ -51,8 +51,11 @@ final class CatalogParser
         $script = $this->http->get($root . '/mobile/javascript/config.js');
         if (!preg_match('~var\s+htmlConfig\s*=\s*(\{.*\})\s*;\s*$~s', $script, $match)) return [];
         $config = json_decode($match[1], true);
-        if (is_string($config['fliphtml5_pages'] ?? null) && is_array($config['search_pages'] ?? null)) {
-            return array_map(static fn ($index) => 'browser-render://' . ($index + 1), array_keys($config['search_pages']));
+        if (is_string($config['fliphtml5_pages'] ?? null)) {
+            $pageList = is_array($config['pageEditor'] ?? null) ? $config['pageEditor'] : ($config['search_pages'] ?? null);
+            if (is_array($pageList)) {
+                return array_map(static fn ($index) => 'browser-render://' . ($index + 1), array_keys($pageList));
+            }
         }
         if (!is_array($config['fliphtml5_pages'] ?? null)) return [];
         $pages = [];

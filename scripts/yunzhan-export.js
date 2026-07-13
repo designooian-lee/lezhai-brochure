@@ -41,13 +41,16 @@ async function capturePage(page, number) {
   await page.evaluate(pageNumber => { if (typeof window.gotoPageFun === 'function') window.gotoPageFun(pageNumber); }, number);
   await page.waitForFunction(pageNumber => [...document.querySelectorAll(`#page${pageNumber}`)].some(container => {
     const rect = container.getBoundingClientRect();
-    return rect.width >= 300 && rect.height >= 300 && [...container.querySelectorAll('canvas')].some(canvas => canvas.width > 300 && canvas.height > 300);
+    return rect.width >= 300 && rect.height >= 300 && (
+      [...container.querySelectorAll('img')].some(image => image.src.includes('/files/large/') && image.complete && image.naturalWidth > 300 && image.naturalHeight > 300) ||
+      [...container.querySelectorAll('canvas')].some(canvas => canvas.width > 300 && canvas.height > 300)
+    );
   }), number, { timeout: 20000, polling: 100 });
   const dimensions = await page.evaluate(pageNumber => {
-    document.querySelector('#lezhai-export-canvas')?.remove();
+    document.querySelector('#lezhai-export-page')?.remove();
     const candidates = [...document.querySelectorAll(`#page${pageNumber}`)].filter(container => {
       const rect = container.getBoundingClientRect();
-      return rect.width >= 300 && rect.height >= 300 && [...container.querySelectorAll('canvas')].some(canvas => canvas.width > 300 && canvas.height > 300);
+      return rect.width >= 300 && rect.height >= 300;
     });
     const container = candidates.sort((a, b) => {
       const first = a.getBoundingClientRect(); const second = b.getBoundingClientRect();
@@ -55,9 +58,17 @@ async function capturePage(page, number) {
     })[0];
     if (!container) return null;
     const rect = container.getBoundingClientRect();
-    const width = Math.max(1000, Math.round(rect.width));
-    const height = Math.max(1000, Math.round(rect.height));
-    const output = document.createElement('canvas'); output.id = 'lezhai-export-canvas'; output.width = width; output.height = height;
+    const image = [...container.querySelectorAll('img')].find(node => node.src.includes('/files/large/') && node.complete && node.naturalWidth > 300 && node.naturalHeight > 300);
+    if (image) {
+      const scale = Math.max(1, 1000 / image.naturalWidth, 1000 / image.naturalHeight);
+      const output = image.cloneNode(); output.id = 'lezhai-export-page'; output.width = Math.ceil(image.naturalWidth * scale); output.height = Math.ceil(image.naturalHeight * scale);
+      output.style.cssText = `position:fixed;left:0;top:0;width:${output.width}px;height:${output.height}px;z-index:2147483647`;
+      document.body.append(output); return { width: output.width, height: output.height };
+    }
+    const scale = Math.max(1, 1000 / rect.width, 1000 / rect.height);
+    const width = Math.ceil(rect.width * scale);
+    const height = Math.ceil(rect.height * scale);
+    const output = document.createElement('canvas'); output.id = 'lezhai-export-page'; output.width = width; output.height = height;
     output.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:${height}px;z-index:2147483647;background:#fff`;
     const drawing = output.getContext('2d'); drawing.fillStyle = '#fff'; drawing.fillRect(0, 0, width, height);
     drawing.scale(width / rect.width, height / rect.height);
@@ -70,8 +81,9 @@ async function capturePage(page, number) {
     drawing.globalAlpha = 1; document.body.append(output); return { width, height };
   }, number);
   if (!dimensions) throw new Error(`Page ${number} could not be decoded.`);
-  await page.locator('#lezhai-export-canvas').screenshot({ path: path.join(output, `${String(number).padStart(4, '0')}.png`), type: 'png', animations: 'disabled' });
-  await page.locator('#lezhai-export-canvas').evaluate(node => node.remove());
+  await page.waitForFunction(() => { const node = document.querySelector('#lezhai-export-page'); return node && (node.tagName !== 'IMG' || node.complete); });
+  await page.locator('#lezhai-export-page').screenshot({ path: path.join(output, `${String(number).padStart(4, '0')}.png`), type: 'png', animations: 'disabled' });
+  await page.locator('#lezhai-export-page').evaluate(node => node.remove());
 }
 
 (async () => {
