@@ -34,6 +34,14 @@ $tutorials=new Lezhai\TutorialService($pdo);$tutorialId=$tutorials->save(['title
 $parser = new Lezhai\CatalogParser();
 try { $parser->parse('https://example.com/book'); check(false, '未知域名被拒绝'); } catch (Throwable $e) { check(str_contains($e->getMessage(), '暂不支持'), '未知域名被拒绝'); }
 try { $parser->parse('https://book.yunzhan365.com/wxfu/urim/mobile/index.htmll'); check(false, '错误扩展名提供建议'); } catch (Throwable $e) { check(str_contains($e->getMessage(), '建议修正'), '错误扩展名提供建议'); }
+class FakeYunzhanHttpClient extends Lezhai\HttpClient {
+    public function get(string $url, bool $resource = false): string {
+        if (str_ends_with($url, '/mobile/javascript/config.js')) return 'var htmlConfig = {"fliphtml5_pages":[{"n":["../files/large/page.webp"]},{"n":["encrypted.zip"]}]};';
+        return '<meta property="og:title" content="配置解析测试">';
+    }
+}
+$configCatalog=(new Lezhai\CatalogParser(new FakeYunzhanHttpClient()))->parse('https://book.yunzhan365.com/test/book/mobile/index.html');
+check($configCatalog['pages']===['https://book.yunzhan365.com/test/book/files/large/page.webp','browser-render://2'],'云展网清单直接读取公开配置，不启动浏览器');
 
 $service = new Lezhai\CatalogService($pdo);
 $articleService = new Lezhai\ArticleService($pdo);

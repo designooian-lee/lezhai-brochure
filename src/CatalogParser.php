@@ -33,7 +33,12 @@ final class CatalogParser
         $url = "https://book.yunzhan365.com/{$m[1]}/{$m[2]}/mobile/index.html";
         $html = $this->http->get($url);
         $root = "https://book.yunzhan365.com/{$m[1]}/{$m[2]}";
-        $pages = $this->browserManifest($url, $root);
+        try {
+            $pages = $this->configManifest($root);
+        } catch (\Throwable) {
+            $pages = [];
+        }
+        if ($pages === []) $pages = $this->browserManifest($url, $root);
         return [
             'source_type' => 'yunzhan365',
             'source_url' => $url,
@@ -43,6 +48,34 @@ final class CatalogParser
             'pages' => $pages,
             'pdf_url' => null,
         ];
+    }
+
+    private function configManifest(string $root): array
+    {
+        $script = $this->http->get($root . '/mobile/javascript/config.js');
+        if (!preg_match('~var\s+htmlConfig\s*=\s*(\{.*\})\s*;\s*$~s', $script, $match)) return [];
+        $config = json_decode($match[1], true);
+        if (!is_array($config['fliphtml5_pages'] ?? null)) return [];
+        $pages = [];
+        foreach ($config['fliphtml5_pages'] as $index => $item) {
+            $file = is_array($item['n'] ?? null) ? (string) ($item['n'][0] ?? '') : '';
+            if ($file === '') continue;
+            if (preg_match('~\.zip(?:\?|$)~i', $file)) {
+                $pages[] = 'browser-render://' . ($index + 1);
+                continue;
+            }
+            $file = preg_replace('~^(\.\./)+~', '', $file);
+            if (!preg_match('~^https?://~i', $file)) {
+                if (str_starts_with($file, '//')) $file = 'https:' . $file;
+                elseif (str_starts_with($file, '/')) $file = 'https://book.yunzhan365.com' . $file;
+                elseif (str_starts_with($file, 'files/')) $file = $root . '/' . $file;
+                else $file = $root . '/files/large/' . $file;
+            }
+            $pages[] = preg_replace('~x-oss-process=image/resize,[^&]+~', 'x-oss-process=image/sharpen,100', $file);
+        }
+        return array_values(array_filter($pages, static fn ($page) =>
+            str_starts_with($page, $root . '/files/large/') || str_starts_with($page, 'browser-render://')
+        ));
     }
 
     private function parseGoootu(string $url): array
