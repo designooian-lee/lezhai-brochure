@@ -387,7 +387,7 @@ final class App
         if ($method === 'POST') {
             Auth::verifyCsrf();
             try {
-                if (($_POST['action'] ?? '') === 'save') { $id = $this->catalogs->createFromParseJob($_POST,(int)($_POST['parse_job_id']??0)); $this->flash('图册已添加。'); $this->redirectAdmin(); }
+                if (($_POST['action'] ?? '') === 'save') { $result = $this->catalogs->createFromParseJob($_POST,(int)($_POST['parse_job_id']??0)); if(!$result['created']){$this->flash('该链接的图册已存在，已打开现有图册。');header('Location: '.base_path('admin/catalogs/'.(int)$result['id'].'/edit'));exit;} $this->flash('图册已添加。'); $this->redirectAdmin(); }
             } catch (\Throwable $e) { $error = $e->getMessage(); }
         }
         $this->catalogForm(null, $preview, $error);
