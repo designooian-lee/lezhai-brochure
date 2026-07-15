@@ -77,7 +77,7 @@ final class CatalogService
         return $parsed;
     }
 
-    public function createFromParseJob(array $input,int $jobId): int
+    public function createFromParseJob(array $input,int $jobId): array
     {
         $this->pdo->beginTransaction();
         try{
@@ -85,9 +85,11 @@ final class CatalogService
             if(!$job||$job['status']!=='completed'||$job['catalog_id']!==null)throw new RuntimeException('解析任务不可用，请重新解析链接。');
             $parsed=json_decode((string)$job['result_payload'],true);
             if(!is_array($parsed)||empty($parsed['pages'])||empty($parsed['source_url']))throw new RuntimeException('解析结果不完整，请重新解析链接。');
+            $existing=$this->pdo->prepare('SELECT id FROM catalogs WHERE source_url=?');$existing->execute([$parsed['source_url']]);$existingId=(int)$existing->fetchColumn();
+            if($existingId>0){$this->pdo->prepare('UPDATE catalog_jobs SET catalog_id=? WHERE id=?')->execute([$existingId,$jobId]);$this->pdo->commit();return ['id'=>$existingId,'created'=>false];}
             $insert=$this->pdo->prepare("INSERT INTO catalogs(category_id,source_url,source_type,name,description,cover_path,cover_source_url,page_manifest,pdf_url,manual_priority,is_active,parse_status,parsed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,'ok',NOW()) RETURNING id");
             $insert->execute([(int)($input['category_id']??0),$parsed['source_url'],$parsed['source_type'],trim((string)(($input['name']??'')?:$parsed['title'])),trim((string)($input['description']??'')),(string)$parsed['cover_url'],(string)($parsed['cover_source_url']??''),json_encode($parsed['pages'],JSON_UNESCAPED_SLASHES),$parsed['pdf_url']??null,(int)($input['manual_priority']??0),isset($input['is_active'])]);
-            $catalogId=(int)$insert->fetchColumn();$this->pdo->prepare('UPDATE catalog_jobs SET catalog_id=? WHERE id=?')->execute([$catalogId,$jobId]);$this->pdo->commit();return $catalogId;
+            $catalogId=(int)$insert->fetchColumn();$this->pdo->prepare('UPDATE catalog_jobs SET catalog_id=? WHERE id=?')->execute([$catalogId,$jobId]);$this->pdo->commit();return ['id'=>$catalogId,'created'=>true];
         }catch(\Throwable $exception){if($this->pdo->inTransaction())$this->pdo->rollBack();throw $exception;}
     }
 
