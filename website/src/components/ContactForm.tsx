@@ -10,7 +10,8 @@ interface Props {
 type State = 'idle' | 'submitting' | 'success' | 'error';
 
 export default function ContactForm({ endpoint, apiKey, subject }: Props) {
-  const isConfigured = Boolean(endpoint && apiKey);
+  const formApiKey = apiKey?.replace(/^\uFEFF/, '').trim();
+  const isConfigured = Boolean(endpoint && formApiKey);
   const [state, setState] = useState<State>('idle');
   const [message, setMessage] = useState(
     isConfigured
@@ -50,12 +51,12 @@ export default function ContactForm({ endpoint, apiKey, subject }: Props) {
   }
 
   return <form className="contact-form" action={endpoint} method="POST" onSubmit={submit}>
-    <input type="hidden" name="apiKey" value={apiKey ?? ''} />
+    <input type="hidden" name="apiKey" value={formApiKey ?? ''} />
     <input type="hidden" name="subject" value={subject ?? '乐宅.Life 预约量尺申请'} />
 
     <div className="field"><label htmlFor="name">称呼</label><input id="name" name="name" autoComplete="name" required maxLength={40} /></div>
     <div className="field"><label htmlFor="phone">手机号码</label><input id="phone" name="phone" autoComplete="tel" inputMode="tel" pattern="[0-9+\-\s]{7,20}" required /></div>
-    <div className="field"><label htmlFor="email">电子邮箱</label><input id="email" name="email" type="email" autoComplete="email" required /></div>
+    <div className="field"><label htmlFor="email">电子邮箱</label><input id="email" name="email" type="email" autoComplete="email" /></div>
     <div className="field"><label htmlFor="area">所在区域</label><input id="area" name="area" placeholder="例如：惠城区" maxLength={60} /></div>
     <div className="field"><label htmlFor="stage">装修阶段</label><select id="stage" name="stage" defaultValue=""><option value="" disabled>请选择</option><option>正在规划</option><option>设计方案中</option><option>准备施工</option><option>现场施工中</option></select></div>
     <div className="field field--full"><label htmlFor="message">门窗需求</label><textarea id="message" name="message" placeholder="可以描述空间、喜欢的效果、现场情况或希望解决的问题" required maxLength={1000} /></div>
