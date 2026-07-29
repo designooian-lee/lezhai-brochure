@@ -54,6 +54,7 @@
   const title = document.querySelector('#reader-title');
   let previousUrl = location.href;
   const favoriteKey = 'lezhai_favorites_v1';
+  const pendingCatalogShareKey = 'lezhai_pending_catalog_share_v1';
 
   function readFavorites() {
     try {
@@ -130,6 +131,11 @@
   async function shareCatalog(button) {
     const url = new URL(button.dataset.shareUrl || location.href, location.origin).href;
     const title = button.dataset.shareTitle || '乐宅.Life 内容分享';
+    if (button.hasAttribute('data-catalog-share') && /MicroMessenger/i.test(navigator.userAgent)) {
+      try { sessionStorage.setItem(pendingCatalogShareKey, url); } catch (_) {}
+      location.assign(url);
+      return;
+    }
     if (navigator.share) {
       try { await navigator.share({ title, text: `查看乐宅.Life内容：${title}`, url }); return; }
       catch (error) { if (error?.name === 'AbortError') return; }
@@ -145,14 +151,14 @@
     } catch (_) { window.prompt('复制下面的链接，发送给微信好友：', url); }
   }
 
-  async function openReader(button) {
+  async function openReader(button, updateHistory = true) {
     if (!dialog || !content) return;
     previousUrl = location.href;
     title.textContent = button.dataset.catalogTitle || '电子图册';
     content.innerHTML = '<div class="reader-loading">正在载入图册…</div>';
     dialog.showModal();
     document.body.style.overflow = 'hidden';
-    history.pushState({ reader: true }, '', `?catalog=${encodeURIComponent(button.dataset.catalogTitle || '')}`);
+    if (updateHistory) history.pushState({ reader: true }, '', `?catalog=${encodeURIComponent(button.dataset.catalogTitle || '')}`);
     fetch(button.dataset.viewUrl, { method: 'POST', credentials: 'same-origin' }).catch(() => {});
     try {
       const response = await fetch(button.dataset.readerUrl, { credentials: 'same-origin' });
@@ -195,6 +201,22 @@
   }
 
   function escapeHtml(value) { const div = document.createElement('div'); div.textContent = value; return div.innerHTML; }
+  function initWechatCatalogShareGuide() {
+    const guide = document.querySelector('[data-wechat-share-guide]');
+    if (!guide) return;
+    let pendingUrl = '';
+    try { pendingUrl = sessionStorage.getItem(pendingCatalogShareKey) || ''; } catch (_) {}
+    if (!pendingUrl) return;
+    try {
+      const pending = new URL(pendingUrl, location.origin);
+      if (pending.origin !== location.origin || pending.pathname !== location.pathname) return;
+    } catch (_) { return; }
+    try { sessionStorage.removeItem(pendingCatalogShareKey); } catch (_) {}
+    guide.hidden = false;
+    const close = () => { guide.hidden = true; };
+    guide.querySelector('[data-close-wechat-share]')?.addEventListener('click', close);
+    guide.querySelector('[data-confirm-wechat-share]')?.addEventListener('click', close);
+  }
   document.querySelectorAll('[data-reader-url]').forEach(button => button.addEventListener('click', () => openReader(button)));
   document.querySelectorAll('[data-share-url]').forEach(button => button.addEventListener('click', () => shareCatalog(button)));
   initFavorites();
@@ -203,8 +225,9 @@
   window.addEventListener('popstate', () => closeReader(true));
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && dialog?.open) closeReader(); });
   if (dialog?.dataset.autoReaderUrl) {
-    openReader({ dataset: { readerUrl: dialog.dataset.autoReaderUrl, viewUrl: dialog.dataset.autoViewUrl, catalogTitle: dialog.dataset.autoTitle } });
+    openReader({ dataset: { readerUrl: dialog.dataset.autoReaderUrl, viewUrl: dialog.dataset.autoViewUrl, catalogTitle: dialog.dataset.autoTitle } }, false);
   }
+  initWechatCatalogShareGuide();
   const jobPanel = document.querySelector('[data-catalog-job]');
   if (jobPanel) {
     const message = jobPanel.querySelector('[data-job-message]');

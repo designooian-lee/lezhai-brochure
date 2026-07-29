@@ -9,15 +9,17 @@ const browserPath = process.env.BROWSER_EXECUTABLE || undefined;
 const output = path.join(root, 'storage', 'runtime', 'qa');
 fs.mkdirSync(output, { recursive: true });
 const ini = path.join(root, 'storage', 'runtime', 'php.ini');
-const args = [...(fs.existsSync(ini) ? ['-c', ini] : []), '-S', '127.0.0.1:8082', path.join(root, 'public', 'router.php')];
-const server = spawn(php, args, { cwd: root, stdio: 'ignore', windowsHide: true });
+const useExistingServer = process.env.USE_EXISTING_SERVER === '1';
+const port = process.env.VISUAL_PORT || (useExistingServer ? '8080' : '8082');
+const args = [...(fs.existsSync(ini) ? ['-c', ini] : []), '-S', `127.0.0.1:${port}`, path.join(root, 'public', 'router.php')];
+const server = useExistingServer ? null : spawn(php, args, { cwd: root, stdio: 'ignore', windowsHide: true });
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const assert = (condition, message) => { if (!condition) throw new Error(message); console.log(`[通过] ${message}`); };
 
 (async () => {
   let browser;
   try {
-    const base = 'http://127.0.0.1:8082/brochure';
+    const base = `http://127.0.0.1:${port}/brochure`;
     for (let i = 0; i < 30; i++) {
       try { if ((await (await fetch(`${base}/health`)).json()).status === 'ok') break; } catch (_) {}
       await sleep(250);
@@ -27,12 +29,21 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
     for (const [name, width, height] of [['360',360,800],['390',390,844],['430',430,932],['768',768,1024],['desktop',1440,1000]]) {
       await page.setViewportSize({ width, height });
       await page.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 30000 });
-      const state = await page.evaluate(() => ({
-        overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
-        cards: document.querySelectorAll('.catalog-grid .catalog-card').length,
-        badImages: [...document.images].filter(img => img.complete && img.naturalWidth === 0).length,
-      }));
-      assert(!state.overflow && state.cards >= 10 && state.badImages === 0, `${width}px 首页无横向溢出、图册封面完整 ${JSON.stringify(state)}`);
+      const state = await page.evaluate(() => {
+        const tabs = document.querySelector('.category-tabs');
+        const labels = [...tabs.querySelectorAll('a, .favorites-tab')];
+        return {
+          overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+          cards: document.querySelectorAll('.catalog-grid .catalog-card').length,
+          badImages: [...document.images].filter(img => img.complete && img.naturalWidth === 0).length,
+          labelsVisible: labels.every(label => getComputedStyle(label).display !== 'none' && label.getBoundingClientRect().width > 0),
+          labelsInside: labels.every(label => { const rect=label.getBoundingClientRect(); return rect.left >= -1 && rect.right <= innerWidth + 1; }),
+          tabWrap: getComputedStyle(tabs).flexWrap,
+          tabOverflow: getComputedStyle(tabs).overflow,
+        };
+      });
+      const mobileTabsOk = width > 700 || (state.labelsVisible && state.labelsInside && state.tabWrap === 'wrap' && state.tabOverflow === 'visible');
+      assert(!state.overflow && state.cards >= 10 && state.badImages === 0 && mobileTabsOk, `${width}px 首页无横向溢出、分类完整换行、图册封面完整 ${JSON.stringify(state)}`);
       await page.screenshot({ path: path.join(output, `home-${name}.png`), fullPage: true });
     }
     await page.setViewportSize({ width: 390, height: 844 });
@@ -48,13 +59,50 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
       count: document.querySelector('[data-favorites-count]')?.textContent,
     }));
     assert(favoriteState.visible === 1 && favoriteState.count === '1', '我的收藏筛选只显示已收藏图册');
-    await page.goto(`${base}/catalog/1`, { waitUntil: 'networkidle' });
+    await page.goto(`${base}/catalog/1`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForSelector('dialog[open]');
-    assert(await page.locator('dialog[open]').isVisible(), '分享链接打开后自动进入指定图册');
+    assert(await page.locator('dialog[open]').isVisible() && new URL(page.url()).search === '', '分享链接以干净网址打开并自动进入指定图册');
+    assert(!(await page.locator('[data-wechat-share-guide]').isVisible()), '普通访客打开图册时不显示微信分享引导');
+
+    const wechatContext = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      userAgent: 'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 Mobile MicroMessenger/8.0.50',
+    });
+    const wechatPage = await wechatContext.newPage();
+    await wechatPage.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 30000 });
+    const catalogShare = wechatPage.locator('[data-catalog-share]').first();
+    const sharePath = new URL(await catalogShare.getAttribute('data-share-url'), base).pathname;
+    const shareTitle = await catalogShare.getAttribute('data-share-title');
+    await catalogShare.click();
+    await wechatPage.waitForURL(url => url.pathname === sharePath && url.search === '', { timeout: 10000 });
+    await wechatPage.waitForSelector('[data-wechat-share-guide]:not([hidden])', { timeout: 10000 });
+    assert(await wechatPage.locator('[data-wechat-share-guide]').isVisible() && await wechatPage.title() === shareTitle, '微信内分享进入图册直达页并显示当前图册转发引导');
+    await wechatPage.screenshot({ path: path.join(output, 'wechat-share-guide-390.png'), fullPage: true });
+    await wechatPage.locator('[data-confirm-wechat-share]').click();
+    assert(!(await wechatPage.locator('[data-wechat-share-guide]').isVisible()), '微信分享引导可以关闭');
+    await wechatContext.close();
+
+    const webShareContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await webShareContext.addInitScript(() => {
+      Object.defineProperty(navigator, 'share', {
+        configurable: true,
+        value: data => { sessionStorage.setItem('web-share-payload', JSON.stringify(data)); return Promise.resolve(); },
+      });
+    });
+    const webSharePage = await webShareContext.newPage();
+    await webSharePage.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 30000 });
+    const regularShare = webSharePage.locator('[data-catalog-share]').first();
+    const regularTitle = await regularShare.getAttribute('data-share-title');
+    await regularShare.click();
+    await webSharePage.waitForFunction(() => sessionStorage.getItem('web-share-payload'));
+    const sharePayload = JSON.parse(await webSharePage.evaluate(() => sessionStorage.getItem('web-share-payload')));
+    assert(sharePayload.title === regularTitle && /\/brochure\/catalog\/\d+$/.test(sharePayload.url), '非微信浏览器继续使用系统分享并传递图册标题与直达链接');
+    await webShareContext.close();
+
     await page.setViewportSize({ width: 390, height: 844 });
-    for (const [id, type, marker] of [[2,'goootu','[data-image-reader]'],[5,'yunzhan365','iframe.catalog-frame'],[11,'flbook','iframe.catalog-frame']]) {
+    for (const [id, type, marker] of [[1,'goootu','[data-image-reader]'],[5,'yunzhan365','iframe.catalog-frame'],[11,'flbook','iframe.catalog-frame']]) {
       await page.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 30000 });
-      await page.locator(`[data-reader-url$="/reader/${id}"]`).first().click();
+      await page.locator(`[data-reader-url$="/reader/${id}"]`).first().evaluate(button => button.click());
       await page.waitForSelector('dialog[open]', { timeout: 10000 });
       const dialogSize = await page.locator('dialog[open]').evaluate(node => { const box=node.getBoundingClientRect(); return { top:box.top, left:box.left, width:box.width, height:box.height, viewport:[innerWidth,innerHeight], bodyOverflow:getComputedStyle(document.body).overflow }; });
       assert(dialogSize.top === 0 && dialogSize.left === 0 && Math.abs(dialogSize.width-dialogSize.viewport[0]) < 2 && Math.abs(dialogSize.height-dialogSize.viewport[1]) < 2 && dialogSize.bodyOverflow === 'hidden', `${type} 阅读层覆盖完整窗口`);
@@ -90,6 +138,6 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
     console.log(`截图目录：${output}`);
   } finally {
     if (browser) await browser.close();
-    server.kill();
+    if (server) server.kill();
   }
 })().catch(error => { console.error(`[失败] ${error.message}`); process.exitCode = 1; });

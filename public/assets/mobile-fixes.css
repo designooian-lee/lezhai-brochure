@@ -54,3 +54,86 @@
 .reader-contact:hover {
     text-decoration: underline;
 }
+
+.wechat-share-guide {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: grid;
+    place-items: start center;
+    padding: max(92px, env(safe-area-inset-top)) 20px 24px;
+    background: rgba(37, 42, 40, 0.76);
+}
+
+.wechat-share-arrow {
+    position: absolute;
+    top: max(16px, env(safe-area-inset-top));
+    right: 18px;
+    color: #fff;
+    font-size: 54px;
+    line-height: 1;
+    transform: rotate(-12deg);
+}
+
+.wechat-share-panel {
+    position: relative;
+    width: min(100%, 420px);
+    padding: 30px 24px 24px;
+    border-radius: 18px;
+    background: var(--paper);
+    color: var(--charcoal);
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+    text-align: center;
+}
+
+.wechat-share-panel > span {
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.wechat-share-panel > strong {
+    display: block;
+    margin-top: 8px;
+    font-size: 20px;
+    overflow-wrap: anywhere;
+}
+
+.wechat-share-panel > p {
+    margin: 18px 0 22px;
+    line-height: 1.7;
+}
+
+.wechat-share-close {
+    position: absolute;
+    top: 8px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 26px;
+    cursor: pointer;
+}
+
+@media (max-width: 700px) {
+    .category-tabs {
+        position: static;
+        flex-wrap: wrap;
+        overflow: visible;
+        background: none;
+    }
+
+    .category-tabs a,
+    .category-tabs .favorites-tab {
+        flex: 0 1 auto;
+        max-width: 100%;
+        height: auto;
+        min-height: 44px;
+        padding: 10px 16px;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        text-align: center;
+        justify-content: center;
+    }
+}

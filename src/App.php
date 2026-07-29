@@ -129,6 +129,18 @@ final class App
     {
         $autoOpen = $autoOpenId ? $this->catalogs->find($autoOpenId) : null;
         if ($autoOpenId && !$autoOpen) { http_response_code(404); $this->layout('图册不存在', '<main class="empty"><h1>图册不存在或已隐藏</h1><a class="button" href="' . e(base_path()) . '">查看全部图册</a></main>'); return; }
+        $shareHead = '';
+        if ($autoOpen) {
+            $origin = rtrim(Config::get('PUBLIC_ORIGIN', 'https://www.lezhai.life'), '/');
+            $sharePath = base_path('catalog/' . $autoOpen['id']);
+            $coverPath = $autoOpen['cover_path'] ? base_path(ltrim($autoOpen['cover_path'], '/')) : base_path('assets/cover-placeholder.svg');
+            $description = trim((string) ($autoOpen['description'] ?? '')) ?: '查看乐宅.Life电子图册';
+            $shareHead = '<meta property="og:type" content="website">'
+                . '<meta property="og:title" content="' . e($autoOpen['name']) . '">'
+                . '<meta property="og:description" content="' . e($description) . '">'
+                . '<meta property="og:image" content="' . e($origin . $coverPath) . '">'
+                . '<meta property="og:url" content="' . e($origin . $sharePath) . '">';
+        }
         $categoryId = isset($_GET['category']) ? (int) $_GET['category'] : null;
         $categories = $this->catalogs->categories();
         if ($categoryId && !array_filter($categories, static fn ($c) => (int) $c['id'] === $categoryId)) {
@@ -164,8 +176,8 @@ final class App
             </section>
         </main>
         <aside class="warm-tip"><span aria-hidden="true">✦</span><strong>温馨提示</strong><span>看到喜欢的款式，直接截图发给客服</span></aside>
-        <dialog id="reader-dialog" class="reader-dialog"<?php if ($autoOpen): ?> data-auto-reader-url="<?= e(base_path('reader/' . $autoOpen['id'])) ?>" data-auto-view-url="<?= e(base_path('view/' . $autoOpen['id'])) ?>" data-auto-title="<?= e($autoOpen['name']) ?>"<?php endif; ?>><div class="reader-toolbar"><button type="button" data-close-reader aria-label="关闭图册">‹ 返回选款</button><strong id="reader-title">正在打开图册</strong><a class="reader-contact" href="https://www.lezhai.life/contact/" target="_blank" rel="noopener noreferrer">联系我们</a></div><div id="reader-content" class="reader-content"><div class="reader-loading">正在载入图册…</div></div></dialog>
-        <?php $this->layout($autoOpen ? $autoOpen['name'] : '图册选款', (string) ob_get_clean());
+        <dialog id="reader-dialog" class="reader-dialog"<?php if ($autoOpen): ?> data-auto-reader-url="<?= e(base_path('reader/' . $autoOpen['id'])) ?>" data-auto-view-url="<?= e(base_path('view/' . $autoOpen['id'])) ?>" data-auto-title="<?= e($autoOpen['name']) ?>"<?php endif; ?>><div class="reader-toolbar"><button type="button" data-close-reader aria-label="关闭图册">‹ 返回选款</button><strong id="reader-title">正在打开图册</strong><a class="reader-contact" href="https://www.lezhai.life/contact/" target="_blank" rel="noopener noreferrer">联系我们</a></div><div id="reader-content" class="reader-content"><div class="reader-loading">正在载入图册…</div></div><?php if ($autoOpen): ?><aside class="wechat-share-guide" data-wechat-share-guide hidden role="dialog" aria-modal="true" aria-labelledby="wechat-share-guide-title"><div class="wechat-share-arrow" aria-hidden="true">↗</div><div class="wechat-share-panel"><button type="button" class="wechat-share-close" data-close-wechat-share aria-label="关闭分享提示">×</button><span>当前图册已准备好</span><strong id="wechat-share-guide-title"><?= e($autoOpen['name']) ?></strong><p>点击右上角 ···，选择“发送给朋友”</p><button type="button" class="button" data-confirm-wechat-share>知道了</button></div></aside><?php endif; ?></dialog>
+        <?php $this->layout($autoOpen ? $autoOpen['name'] : '图册选款', (string) ob_get_clean(), false, $shareHead, $autoOpen !== null);
     }
 
     private function publicNav(string $active): string
@@ -218,7 +230,7 @@ final class App
                 <span class="card-copy"><small><?= e($catalog['category_name']) ?></small><strong><?= e($catalog['name']) ?></strong><span><?= e($catalog['description'] ?: '点击查看完整电子图册') ?></span><i>查看图册 <b>→</b></i></span>
             </button>
             <button class="favorite-button" type="button" data-favorite-id="<?= (int) $catalog['id'] ?>" aria-pressed="false"><span aria-hidden="true">♡</span> 收藏</button>
-            <button class="share-button" type="button" data-share-url="<?= e(base_path('catalog/' . $catalog['id'])) ?>" data-share-title="<?= e($catalog['name']) ?>"><span aria-hidden="true">↗</span> 分享</button>
+            <button class="share-button" type="button" data-catalog-share data-share-url="<?= e(base_path('catalog/' . $catalog['id'])) ?>" data-share-title="<?= e($catalog['name']) ?>"><span aria-hidden="true">↗</span> 分享</button>
         </article>
         <?php return (string) ob_get_clean();
     }
@@ -482,10 +494,10 @@ final class App
         return '<header class="admin-header"><div><a class="brand-placeholder" href="' . e(base_path('admin')) . '"><span class="brand-cn">乐宅.Life</span></a><h1>' . e($title) . '</h1></div><nav><a href="/" target="_blank">查看官网</a><a href="/brochure" target="_blank">查看图册</a><a href="' . e(base_path('admin/data')) . '">数据管理</a><form method="post" action="' . e(base_path('admin/logout')) . '"><input type="hidden" name="_csrf" value="' . e(Auth::csrf()) . '"><button type="submit">退出</button></form></nav></header>';
     }
 
-    private function layout(string $title, string $content, bool $admin = false, string $head = ''): void
+    private function layout(string $title, string $content, bool $admin = false, string $head = '', bool $exactTitle = false): void
     {
         $assetVersion=(string)max((int)@filemtime(dirname(__DIR__).'/public/assets/app.css'),(int)@filemtime(dirname(__DIR__).'/public/assets/app.js'));
-        ?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#C65D3B"><title><?= e($title) ?>｜乐宅.Life</title><?=$head?><link rel="stylesheet" href="<?= e(base_path('assets/app.css').'?v='.$assetVersion) ?>"><link rel="stylesheet" href="<?= e(base_path('assets/mobile-fixes.css')) ?>"></head><body class="<?= $admin ? 'admin-body' : 'public-body' ?>"><?= $content ?><footer class="app-copyright">© 2026 乐宅.Life</footer><script src="<?= e(base_path('assets/app.js').'?v='.$assetVersion) ?>" defer></script></body></html><?php
+        ?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#C65D3B"><title><?= e($title) ?><?= $exactTitle ? '' : '｜乐宅.Life' ?></title><?=$head?><link rel="stylesheet" href="<?= e(base_path('assets/app.css').'?v='.$assetVersion) ?>"><link rel="stylesheet" href="<?= e(base_path('assets/mobile-fixes.css')) ?>"></head><body class="<?= $admin ? 'admin-body' : 'public-body' ?>"><?= $content ?><footer class="app-copyright">© 2026 乐宅.Life</footer><script src="<?= e(base_path('assets/app.js').'?v='.$assetVersion) ?>" defer></script></body></html><?php
     }
 
     private function sourceLabel(string $source): string { return ['yunzhan365'=>'云展网','goootu'=>'goootu','flbook'=>'FLBOOK'][$source] ?? $source; }
