@@ -25,6 +25,7 @@ const mergeCookies = (old, fresh) => {
   return [...jar].map(([name, value]) => `${name}=${value}`);
 };
 const assert = (condition, message) => { if (!condition) throw new Error(message); console.log(`[通过] ${message}`); };
+const decodeAttribute = value => value.replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 async function main() {
   for (let i = 0; i < 30; i++) {
@@ -105,8 +106,39 @@ async function main() {
   adminJar = mergeCookies(adminJar, incomingCookies(loginResponse.headers));
   const admin = await fetch(adminBase, { headers: { cookie: adminJar.join('; ') } });
   const adminLandingHtml = await admin.text();
-  assert(admin.status === 200 && adminLandingHtml.includes('官网文章') && adminLandingHtml.includes('查看官网') && adminLandingHtml.indexOf('官网文章') < adminLandingHtml.indexOf('分类'), '管理员可以登录，文章管理在前且提供官网入口');
+  assert(admin.status === 200 && adminLandingHtml.includes('官网文章') && adminLandingHtml.includes('查看官网') && adminLandingHtml.indexOf('备案号') < adminLandingHtml.indexOf('查看官网') && adminLandingHtml.indexOf('官网文章') < adminLandingHtml.indexOf('分类'), '管理员可以登录，备案号位于查看官网左侧');
   assert(adminLandingHtml.includes('© 2026 乐宅.Life') && (adminLandingHtml.match(/admin-fixed-section/g)||[]).length===2, '后台显示固定版权且分类、教程使用固定高度容器');
+  const anonymousFiling = await fetch(`${adminBase}/filing`, { redirect: 'manual' });
+  assert(anonymousFiling.status === 302 && anonymousFiling.headers.get('location').endsWith('/admin/login'), '未登录用户不能管理备案号');
+  const filingPage = await fetch(`${adminBase}/filing`, { headers: { cookie: adminJar.join('; ') } });
+  const filingHtml = await filingPage.text();
+  const originalIcp = decodeAttribute(filingHtml.match(/name="icp_number"[^>]*value="([^"]*)"/)[1]);
+  const originalPolice = decodeAttribute(filingHtml.match(/name="police_number"[^>]*value="([^"]*)"/)[1]);
+  const saveFiling = (icp_number, police_number, token=csrf) => fetch(`${adminBase}/filing`, {
+    method: 'POST', redirect: 'manual',
+    headers: { cookie: adminJar.join('; '), 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ _csrf: token, icp_number, police_number }),
+  });
+  const invalidFiling = await saveFiling('', '粤公网安备123号');
+  assert(invalidFiling.status === 200 && (await invalidFiling.text()).includes('14 位备案代码'), '后台拒绝格式错误的公安备案号');
+  assert((await saveFiling('', '', 'invalid-csrf')).status === 419, '备案号保存拒绝无效 CSRF');
+  assert((await saveFiling('', '')).status === 302, '备案号可以全部清空');
+  let filingWebsiteHtml = await (await fetch(siteRoot)).text();
+  let filingBrochureHtml = await (await fetch(`${base}/`)).text();
+  assert(!filingWebsiteHtml.includes('filing-links') && !filingBrochureHtml.includes('filing-links'), '两项备案号为空时前端不显示备案区域');
+  assert((await saveFiling('粤ICP备12345678号', '')).status === 302, 'ICP备案号可以单独保存');
+  filingWebsiteHtml = await (await fetch(siteRoot)).text();
+  filingBrochureHtml = await (await fetch(`${base}/`)).text();
+  assert([filingWebsiteHtml,filingBrochureHtml].every(html=>html.includes('粤ICP备12345678号')&&html.includes('https://beian.miit.gov.cn/')&&!html.includes('beian.mps.gov.cn')),'官网和图册可单独显示ICP备案号');
+  assert((await saveFiling('', '粤公网安备44130202000001号')).status === 302, '公安备案号可以单独保存');
+  filingWebsiteHtml = await (await fetch(siteRoot)).text();
+  filingBrochureHtml = await (await fetch(`${base}/`)).text();
+  assert([filingWebsiteHtml,filingBrochureHtml].every(html=>html.includes('粤公网安备44130202000001号')&&html.includes('code=44130202000001')&&html.includes('police-filing.svg')&&!html.includes('beian.miit.gov.cn')),'官网和图册可单独显示公安备案号及图标');
+  assert((await saveFiling('粤ICP备12345678号', '粤公网安备44130202000001号')).status === 302, '两项备案号可以同时保存');
+  filingWebsiteHtml = await (await fetch(siteRoot)).text();
+  filingBrochureHtml = await (await fetch(`${base}/`)).text();
+  assert([filingWebsiteHtml,filingBrochureHtml].every(html=>html.includes('粤ICP备12345678号')&&html.includes('粤公网安备44130202000001号')),'官网和图册在版权文字后同时显示两项备案号');
+  assert((await saveFiling(originalIcp, originalPolice)).status === 302, '自动测试后恢复原备案设置');
   const imageData = new FormData(); imageData.append('_csrf', csrf); imageData.append('image', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')], { type: 'image/png' }), 'pasted.png');
   const imageUpload = await fetch(`${adminBase}/articles/image`, { method: 'POST', headers: { cookie: adminJar.join('; ') }, body: imageData });
   const imageResult = await imageUpload.json();

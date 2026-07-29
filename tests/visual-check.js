@@ -20,6 +20,7 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
   let browser;
   try {
     const base = `http://127.0.0.1:${port}/brochure`;
+    const siteRoot = new URL(base).origin;
     for (let i = 0; i < 30; i++) {
       try { if ((await (await fetch(`${base}/health`)).json()).status === 'ok') break; } catch (_) {}
       await sleep(250);
@@ -130,10 +131,33 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
     await page.reload({ waitUntil: 'networkidle' });
     const adminState = await page.evaluate(() => ({ overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, rows: document.querySelectorAll('.catalog-table tbody tr').length }));
     assert(!adminState.overflow && adminState.rows >= 10, '390px 后台无页面级横向溢出并显示全部图册');
+    assert(await page.locator('.admin-filing-link').isVisible(), '手机后台显示备案号入口');
     await page.screenshot({ path: path.join(output, 'admin-390.png'), fullPage: true });
-    await page.goto(`${base}/admin/data`, { waitUntil: 'networkidle' });
+    await page.locator('.admin-filing-link').click();
+    await page.waitForURL('**/admin/filing');
+    const originalIcp = await page.locator('[name="icp_number"]').inputValue();
+    const originalPolice = await page.locator('[name="police_number"]').inputValue();
+    try {
+      await page.locator('[name="icp_number"]').fill('粤ICP备12345678号');
+      await page.locator('[name="police_number"]').fill('粤公网安备44130202000001号');
+      await page.getByRole('button', { name: '保存备案号' }).click();
+      await page.waitForSelector('.notice.success');
+      await page.goto(`${siteRoot}/`, { waitUntil: 'networkidle' });
+      assert(await page.locator('.footer-bottom .filing-links').isVisible(), '手机版官网页脚显示备案号');
+      await page.screenshot({ path: path.join(output, 'filing-footer-website-390.png'), fullPage: true });
+      await page.goto(`${base}/`, { waitUntil: 'networkidle' });
+      assert(await page.locator('.app-copyright .filing-links').isVisible(), '手机图册页脚显示备案号');
+      await page.screenshot({ path: path.join(output, 'filing-footer-brochure-390.png'), fullPage: true });
+    } finally {
+      await page.goto(`${siteRoot}/admin/filing`, { waitUntil: 'networkidle' });
+      await page.locator('[name="icp_number"]').fill(originalIcp);
+      await page.locator('[name="police_number"]').fill(originalPolice);
+      await page.getByRole('button', { name: '保存备案号' }).click();
+      await page.waitForSelector('.notice.success');
+    }
+    await page.goto(`${siteRoot}/admin/data`, { waitUntil: 'networkidle' });
     assert(await page.locator('.data-panel').count() === 2, '手机后台显示数据导入与导出');
-    await page.goto(`${base}/admin/catalogs/1/edit`, { waitUntil: 'networkidle' });
+    await page.goto(`${siteRoot}/admin/catalogs/1/edit`, { waitUntil: 'networkidle' });
     assert(await page.locator('select[name="reader_mode"]').isVisible() && await page.locator('.local-pages-panel').isVisible(), '手机图册编辑页显示阅读方式和本地图片状态');
     console.log(`截图目录：${output}`);
   } finally {

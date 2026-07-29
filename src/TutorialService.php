@@ -48,7 +48,8 @@ final class TutorialService
         $url='';$path='';$mime='';
         if($source==='external'){
             $url=trim((string)($input['media_url']??''));
-            if(!filter_var($url,FILTER_VALIDATE_URL)||!in_array(parse_url($url,PHP_URL_SCHEME),['http','https'],true))throw new RuntimeException('请输入有效的 HTTPS/HTTP 媒体链接。');
+            $parts=parse_url($url);
+            if(!filter_var($url,FILTER_VALIDATE_URL)||!is_array($parts)||isset($parts['user'])||isset($parts['pass'])||!in_array(strtolower((string)($parts['scheme']??'')),['http','https'],true))throw new RuntimeException('请输入有效的 HTTPS/HTTP 媒体链接。');
         }else{
             $allowed=$kind==='video'?['video/mp4'=>'mp4','video/webm'=>'webm']:['application/pdf'=>'pdf','application/msword'=>'doc','application/vnd.openxmlformats-officedocument.wordprocessingml.document'=>'docx'];
             $path=$this->upload($file,'media',$allowed,500*1024*1024);$mime=(new \finfo(FILEINFO_MIME_TYPE))->file(dirname(__DIR__).'/public'.$path)?:'';

@@ -136,4 +136,39 @@
         text-align: center;
         justify-content: center;
     }
+
+    .admin-header nav > a.admin-filing-link {
+        display: inline-flex;
+    }
+}
+
+.filing-links {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-left: 8px;
+}
+
+.filing-links a {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: inherit;
+    text-decoration: none;
+}
+
+.filing-links a:hover {
+    text-decoration: underline;
+}
+
+.filing-links img {
+    width: 20px;
+    height: 20px;
+    object-fit: contain;
+}
+
+.filing-form form {
+    margin-top: 22px;
 }

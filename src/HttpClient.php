@@ -8,6 +8,8 @@ use RuntimeException;
 class HttpClient
 {
     private const SOURCE_HOSTS = ['book.yunzhan365.com', 'book.goootu.com', 'flbook.com.cn'];
+    private const MAX_RESPONSE_BYTES = 10 * 1024 * 1024;
+    private const MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 
     public function get(string $url, bool $resource = false): string
     {
@@ -21,7 +23,7 @@ class HttpClient
 
     public function download(string $url, string $target): void
     {
-        $this->validateUrl($url, true);
+        $resolve = $this->validateUrl($url, true);
         $handle = fopen($target, 'wb');
         if ($handle === false) {
             throw new RuntimeException('无法创建下载临时文件。');
@@ -36,15 +38,26 @@ class HttpClient
             CURLOPT_ENCODING => '',
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_FAILONERROR => false,
+            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+            CURLOPT_RESOLVE => [$resolve],
+            CURLOPT_MAXFILESIZE_LARGE => self::MAX_DOWNLOAD_BYTES,
+            CURLOPT_NOPROGRESS => false,
+            CURLOPT_XFERINFOFUNCTION => static function ($curl, $downloadSize, $downloaded, $uploadSize, $uploaded): int {
+                return $downloadSize > self::MAX_DOWNLOAD_BYTES || $downloaded > self::MAX_DOWNLOAD_BYTES ? 1 : 0;
+            },
         ]);
         $ok = curl_exec($ch);
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $type = (string) curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
         $error = curl_error($ch);
+        $errorNumber = curl_errno($ch);
         curl_close($ch);
         fclose($handle);
         if ($ok === false || $status < 200 || $status >= 300 || filesize($target) === 0) {
             @unlink($target);
+            if ($errorNumber === CURLE_ABORTED_BY_CALLBACK || $errorNumber === CURLE_FILESIZE_EXCEEDED) {
+                throw new RuntimeException('下载文件超过 256MB 限制。');
+            }
             throw new RuntimeException("下载失败（HTTP {$status}）{$error}");
         }
         if (!preg_match('~^(image/|application/pdf|application/octet-stream)~i', $type)) {
@@ -55,7 +68,7 @@ class HttpClient
 
     private function request(string $url, string $method, bool $resource, int $redirects = 0): array
     {
-        $this->validateUrl($url, $resource);
+        $resolve = $this->validateUrl($url, $resource);
         $ch = curl_init($url);
         $options = [
             CURLOPT_RETURNTRANSFER => true,
@@ -66,6 +79,13 @@ class HttpClient
             CURLOPT_USERAGENT => 'Mozilla/5.0 LezhaiBrochure/1.0',
             CURLOPT_ENCODING => '',
             CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4,
+            CURLOPT_RESOLVE => [$resolve],
+            CURLOPT_MAXFILESIZE_LARGE => self::MAX_RESPONSE_BYTES,
+            CURLOPT_NOPROGRESS => false,
+            CURLOPT_XFERINFOFUNCTION => static function ($curl, $downloadSize, $downloaded, $uploadSize, $uploaded): int {
+                return $downloadSize > self::MAX_RESPONSE_BYTES || $downloaded > self::MAX_RESPONSE_BYTES ? 1 : 0;
+            },
         ];
         if ($method === 'POST') {
             $options[CURLOPT_POST] = true;
@@ -76,8 +96,12 @@ class HttpClient
         $status = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         $headerSize = (int) curl_getinfo($ch, CURLINFO_HEADER_SIZE);
         $error = curl_error($ch);
+        $errorNumber = curl_errno($ch);
         curl_close($ch);
         if ($raw === false) {
+            if ($errorNumber === CURLE_ABORTED_BY_CALLBACK || $errorNumber === CURLE_FILESIZE_EXCEEDED) {
+                throw new RuntimeException('图册来源响应超过 10MB 限制。');
+            }
             throw new RuntimeException('连接图册来源失败：' . $error);
         }
         $headers = substr($raw, 0, $headerSize);
@@ -99,13 +123,17 @@ class HttpClient
         return ['body' => $body, 'headers' => $headers, 'status' => $status];
     }
 
-    private function validateUrl(string $url, bool $resource): void
+    private function validateUrl(string $url, bool $resource): string
     {
         $parts = parse_url($url);
         $scheme = strtolower($parts['scheme'] ?? '');
         $host = strtolower($parts['host'] ?? '');
-        if (!in_array($scheme, ['http', 'https'], true) || $host === '') {
+        $port = (int) ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
+        if (!in_array($scheme, ['http', 'https'], true) || $host === '' || isset($parts['user']) || isset($parts['pass'])) {
             throw new RuntimeException('只允许有效的 HTTP(S) 图册链接。');
+        }
+        if (($scheme === 'https' && $port !== 443) || ($scheme === 'http' && $port !== 80)) {
+            throw new RuntimeException('图册链接只允许使用标准 HTTP(S) 端口。');
         }
         $allowed = in_array($host, self::SOURCE_HOSTS, true);
         if ($resource) {
@@ -123,5 +151,6 @@ class HttpClient
                 throw new RuntimeException('拒绝访问内网或保留地址。');
             }
         }
+        return $host . ':' . $port . ':' . implode(',', array_unique($addresses));
     }
 }

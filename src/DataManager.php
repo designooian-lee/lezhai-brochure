@@ -24,6 +24,7 @@ final class DataManager
         $tutorialMedia = $this->pdo->query('SELECT id,tutorial_id,media_type,source_type,title,url,file_path,mime_type,sort_order FROM tutorial_media ORDER BY id')->fetchAll();
         $articles = $this->pdo->query('SELECT id,title,slug,excerpt,body_html,cover_path,seo_title,seo_keywords,meta_description,status,published_at,created_at,updated_at FROM articles ORDER BY id')->fetchAll();
         $articleMonthlyViews = $this->pdo->query('SELECT article_id,viewed_month,view_count,updated_at FROM article_monthly_views ORDER BY article_id,viewed_month')->fetchAll();
+        $siteSettings = (new SiteSettingsService($this->pdo))->get();
         return [
             'format' => 'lezhai-brochure-data',
             'version' => 1,
@@ -35,6 +36,7 @@ final class DataManager
             'tutorial_media' => $tutorialMedia,
             'articles' => $articles,
             'article_monthly_views' => $articleMonthlyViews,
+            'site_settings' => $siteSettings,
         ];
     }
 
@@ -52,7 +54,8 @@ final class DataManager
                 $cover = (string) $catalog['cover_path'];
                 if (str_starts_with($cover, '/uploads/covers/')) {
                     $file = dirname(__DIR__) . '/public' . $cover;
-                    if (is_file($file)) $this->addStoredFile($zip, $file, 'covers/' . basename($file));
+                    $name = 'covers/' . basename($file);
+                    if (is_file($file) && $this->isAllowedBackupPath($name)) $this->addStoredFile($zip, $file, $name);
                 }
                 if ($includeLocalPages) {
                     foreach (glob(dirname(__DIR__) . '/storage/local-pages/' . (int) $catalog['id'] . '/*') ?: [] as $page) {
@@ -64,12 +67,12 @@ final class DataManager
             }
             foreach ($this->pdo->query('SELECT cover_path FROM tutorials UNION ALL SELECT file_path FROM tutorial_media')->fetchAll() as $asset) {
                 $path=(string)array_values($asset)[0];
-                if (str_starts_with($path,'/uploads/tutorials/')) { $file=dirname(__DIR__).'/public'.$path; if(is_file($file))$this->addStoredFile($zip,$file,'tutorials/'.basename($file)); }
+                if (str_starts_with($path,'/uploads/tutorials/')) { $file=dirname(__DIR__).'/public'.$path; $name='tutorials/'.basename($file); if(is_file($file)&&$this->isAllowedBackupPath($name))$this->addStoredFile($zip,$file,$name); }
             }
             foreach ($this->pdo->query('SELECT cover_path FROM articles')->fetchAll() as $asset) {
-                $path=(string)$asset['cover_path']; if(str_starts_with($path,'/uploads/articles/')){$file=dirname(__DIR__).'/public'.$path;if(is_file($file))$this->addStoredFile($zip,$file,'articles/'.basename($file));}
+                $path=(string)$asset['cover_path']; if(str_starts_with($path,'/uploads/articles/')){$file=dirname(__DIR__).'/public'.$path;$name='articles/'.basename($file);if(is_file($file)&&$this->isAllowedBackupPath($name))$this->addStoredFile($zip,$file,$name);}
             }
-            foreach(glob(dirname(__DIR__).'/public/uploads/articles/*')?:[] as $file)if(is_file($file)&&$zip->locateName('articles/'.basename($file))===false)$this->addStoredFile($zip,$file,'articles/'.basename($file));
+            foreach(glob(dirname(__DIR__).'/public/uploads/articles/*')?:[] as $file){$name='articles/'.basename($file);if(is_file($file)&&$this->isAllowedBackupPath($name)&&$zip->locateName($name)===false)$this->addStoredFile($zip,$file,$name);}
         } catch (\Throwable $e) {
             $zip->close(); @unlink($target); throw $e;
         }
@@ -81,6 +84,13 @@ final class DataManager
     {
         $zip = new ZipArchive();
         if ($zip->open($file) !== true) throw new RuntimeException('备份 ZIP 无法打开。');
+        if ($zip->numFiles > 100000) { $zip->close(); throw new RuntimeException('备份文件条目过多。'); }
+        $jsonStat = $zip->statName('data.json');
+        $jsonSize = is_array($jsonStat) ? (int) ($jsonStat['size'] ?? 0) : 0;
+        if ($jsonSize < 1 || $jsonSize > 20 * 1024 * 1024) {
+            $zip->close();
+            throw new RuntimeException('备份中的 data.json 大小无效或超过 20MB。');
+        }
         $json = $zip->getFromName('data.json');
         if (!is_string($json)) { $zip->close(); throw new RuntimeException('备份 ZIP 缺少 data.json。'); }
         try { $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR); }
@@ -92,13 +102,13 @@ final class DataManager
         $total = 0;
         $closed = false;
         try {
-            if ($zip->numFiles > 100000) throw new RuntimeException('备份文件条目过多。');
             for ($index = 0; $index < $zip->numFiles; $index++) {
                 $stat = $zip->statIndex($index);
                 $name = is_array($stat) ? (string) ($stat['name'] ?? '') : '';
                 $size = is_array($stat) ? (int) ($stat['size'] ?? 0) : 0;
                 if ($name === 'data.json' || str_ends_with($name, '/')) continue;
-                if (!preg_match('~^(covers/[A-Za-z0-9._-]+|tutorials/[A-Za-z0-9._-]+|articles/[A-Za-z0-9._-]+|local-pages/\d+/\d{4}\.(?:jpg|jpeg|png|webp))$~i', $name)) {
+                if ($size < 1) throw new RuntimeException('备份包含空文件：' . $name);
+                if (!$this->isAllowedBackupPath($name)) {
                     throw new RuntimeException('备份 ZIP 含有不允许的文件路径。');
                 }
                 $total += $size;
@@ -107,7 +117,9 @@ final class DataManager
                 @mkdir(dirname($target), 0775, true);
                 $input = $zip->getStream($name); $output = fopen($target, 'wb');
                 if (!is_resource($input) || !is_resource($output)) throw new RuntimeException('无法读取备份文件：' . $name);
-                stream_copy_to_stream($input, $output); fclose($input); fclose($output);
+                $copied = stream_copy_to_stream($input, $output, $size + 1); fclose($input); fclose($output);
+                if ($copied !== $size) throw new RuntimeException('备份文件解压大小不一致：' . $name);
+                $this->assertExtractedAsset($target, $name);
             }
             $zip->close();
             $closed = true;
@@ -143,6 +155,58 @@ final class DataManager
         $zip->setCompressionName($name, ZipArchive::CM_STORE);
     }
 
+    private function isAllowedBackupPath(string $name): bool
+    {
+        return (bool) preg_match(
+            '~^(?:'
+            . 'covers/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|img)'
+            . '|articles/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif)'
+            . '|tutorials/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|mp4|webm|pdf|doc|docx)'
+            . '|local-pages/\d+/\d{4}\.(?:jpe?g|png|webp)'
+            . ')$~i',
+            $name
+        );
+    }
+
+    private function assertExtractedAsset(string $file, string $name): void
+    {
+        if (!preg_match('~\.(?:jpe?g|png|webp|gif|img)$~i', $name)) return;
+        $info = @getimagesize($file);
+        if (!$info || !in_array((string) ($info['mime'] ?? ''), ['image/jpeg', 'image/png', 'image/webp', 'image/gif'], true)) {
+            throw new RuntimeException('备份包含无效图片：' . $name);
+        }
+    }
+
+    private function isAllowedCatalogUrl(string $url, bool $resource, ?string $sourceType = null): bool
+    {
+        if (!$this->isExternalUrl($url, true)) return false;
+        $parts = parse_url($url);
+        $host = strtolower((string) ($parts['host'] ?? ''));
+        $allowed = in_array($host, ['book.yunzhan365.com', 'book.goootu.com', 'flbook.com.cn'], true);
+        if ($resource) {
+            $allowed = $allowed || (bool) preg_match('~^img\d*\.flbook\.com\.cn$~', $host);
+        }
+        if (!$allowed) return false;
+        return match ($sourceType) {
+            'yunzhan365' => $host === 'book.yunzhan365.com',
+            'goootu' => $host === 'book.goootu.com',
+            'flbook' => $host === 'flbook.com.cn',
+            default => true,
+        };
+    }
+
+    private function isExternalUrl(string $url, bool $standardPortsOnly = false): bool
+    {
+        if (!filter_var($url, FILTER_VALIDATE_URL)) return false;
+        $parts = parse_url($url);
+        if (!is_array($parts) || isset($parts['user']) || isset($parts['pass'])) return false;
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $port = (int) ($parts['port'] ?? ($scheme === 'https' ? 443 : 80));
+        return isset($parts['host'])
+            && in_array($scheme, ['http', 'https'], true)
+            && (!$standardPortsOnly || ($scheme === 'https' && $port === 443) || ($scheme === 'http' && $port === 80));
+    }
+
     private function removeTree(string $directory): void
     {
         if (!is_dir($directory)) return;
@@ -162,6 +226,7 @@ final class DataManager
         $tutorials=$data['tutorials']??[]; $tutorialMedia=$data['tutorial_media']??[];
         $articles=$data['articles']??[];
         $articleMonthlyViews=$data['article_monthly_views']??[];
+        $siteSettings=(new SiteSettingsService($this->pdo))->normalize(is_array($data['site_settings']??null)?$data['site_settings']:[]);
         if (!is_array($categories) || !is_array($catalogs) || !is_array($views) || !is_array($tutorials) || !is_array($tutorialMedia) || !is_array($articles) || !is_array($articleMonthlyViews) || count($categories) > 1000 || count($catalogs) > 10000 || count($views) > 500000 || count($tutorials)>10000 || count($tutorialMedia)>50000 || count($articles)>10000 || count($articleMonthlyViews)>500000) {
             throw new RuntimeException('数据文件结构或记录数量不正确。');
         }
@@ -178,11 +243,32 @@ final class DataManager
             if ((int) ($catalog['id'] ?? 0) < 1 || !isset($categoryIds[(int) ($catalog['category_id'] ?? 0)])) {
                 throw new RuntimeException('图册数据引用了不存在的分类。');
             }
-            if (!in_array((string) ($catalog['source_type'] ?? ''), ['yunzhan365', 'goootu', 'flbook'], true)) {
+            $sourceType = (string) ($catalog['source_type'] ?? '');
+            if (!in_array($sourceType, ['yunzhan365', 'goootu', 'flbook'], true)) {
                 throw new RuntimeException('数据文件含有不支持的图册来源。');
             }
-            if (!is_array($catalog['page_manifest'] ?? null)) {
+            if (!$this->isAllowedCatalogUrl((string) ($catalog['source_url'] ?? ''), false, $sourceType)) {
+                throw new RuntimeException('图册来源链接不安全或与来源类型不匹配。');
+            }
+            $pages = $catalog['page_manifest'] ?? null;
+            if (!is_array($pages) || count($pages) > 2000) {
                 throw new RuntimeException('图册页面清单格式不正确。');
+            }
+            foreach ($pages as $page) {
+                $browserPage = $sourceType === 'yunzhan365' && is_string($page) && preg_match('~^browser-render://[1-9]\d*$~', $page);
+                if (!$browserPage && (!is_string($page) || !$this->isAllowedCatalogUrl($page, true))) {
+                    throw new RuntimeException('图册页面清单含有不安全链接。');
+                }
+            }
+            $coverPath = (string) ($catalog['cover_path'] ?? '');
+            if ($coverPath !== '' && !preg_match('~^/uploads/covers/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|img)$~i', $coverPath)) {
+                throw new RuntimeException('图册封面路径不安全。');
+            }
+            foreach (['cover_source_url', 'pdf_url'] as $field) {
+                $remote = (string) ($catalog[$field] ?? '');
+                if ($remote !== '' && !$this->isAllowedCatalogUrl($remote, true)) {
+                    throw new RuntimeException('图册资源链接不安全。');
+                }
             }
         }
         $catalogIds = array_fill_keys(array_map(static fn (array $catalog): int => (int) $catalog['id'], $catalogs), true);
@@ -191,7 +277,58 @@ final class DataManager
                 throw new RuntimeException('匿名浏览记录格式不正确。');
             }
         }
-        $articleIds=array_fill_keys(array_map(static fn(array $article):int=>(int)($article['id']??0),$articles),true);
+        $tutorialIds = [];
+        foreach ($tutorials as $tutorial) {
+            $tutorialId = (int) ($tutorial['id'] ?? 0);
+            $coverPath = (string) ($tutorial['cover_path'] ?? '');
+            if ($tutorialId < 1 || trim((string) ($tutorial['title'] ?? '')) === '' || isset($tutorialIds[$tutorialId])) {
+                throw new RuntimeException('教程数据不完整或编号重复。');
+            }
+            if ($coverPath !== '' && !preg_match('~^/uploads/tutorials/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp)$~i', $coverPath)) {
+                throw new RuntimeException('教程封面路径不安全。');
+            }
+            $tutorialIds[$tutorialId] = true;
+        }
+        $mediaIds = [];
+        foreach ($tutorialMedia as $media) {
+            $mediaId = (int) ($media['id'] ?? 0);
+            $tutorialId = (int) ($media['tutorial_id'] ?? 0);
+            $mediaType = (string) ($media['media_type'] ?? '');
+            $sourceType = (string) ($media['source_type'] ?? '');
+            if ($mediaId < 1 || isset($mediaIds[$mediaId]) || !isset($tutorialIds[$tutorialId])
+                || !in_array($mediaType, ['video', 'document'], true)
+                || !in_array($sourceType, ['external', 'upload'], true)) {
+                throw new RuntimeException('教程附件数据不完整。');
+            }
+            if ($sourceType === 'external') {
+                if (!$this->isExternalUrl((string) ($media['url'] ?? ''))) {
+                    throw new RuntimeException('教程附件外链不安全。');
+                }
+            } else {
+                $extensions = $mediaType === 'video' ? 'mp4|webm' : 'pdf|doc|docx';
+                if (!preg_match('~^/uploads/tutorials/[A-Za-z0-9._-]+\.(?:' . $extensions . ')$~i', (string) ($media['file_path'] ?? ''))) {
+                    throw new RuntimeException('教程附件文件路径不安全。');
+                }
+            }
+            $mediaIds[$mediaId] = true;
+        }
+        $articleIds = [];
+        $articleSanitizer = new ArticleService($this->pdo);
+        foreach ($articles as &$article) {
+            $articleId = (int) ($article['id'] ?? 0);
+            $slug = (string) ($article['slug'] ?? '');
+            $coverPath = (string) ($article['cover_path'] ?? '');
+            if ($articleId < 1 || isset($articleIds[$articleId]) || trim((string) ($article['title'] ?? '')) === ''
+                || !preg_match('~^[a-z0-9]+(?:-[a-z0-9]+)*$~', $slug)) {
+                throw new RuntimeException('文章数据不完整或网址标识无效。');
+            }
+            if ($coverPath !== '' && !preg_match('~^/uploads/articles/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif)$~i', $coverPath)) {
+                throw new RuntimeException('文章封面路径不安全。');
+            }
+            $article['body_html'] = $articleSanitizer->sanitizeHtml((string) ($article['body_html'] ?? ''));
+            $articleIds[$articleId] = true;
+        }
+        unset($article);
         foreach($articleMonthlyViews as $view){
             if(!isset($articleIds[(int)($view['article_id']??0)])||!preg_match('/^\d{4}-\d{2}-01$/',(string)($view['viewed_month']??''))||(int)($view['view_count']??-1)<0)throw new RuntimeException('文章热点记录格式不正确。');
         }
@@ -233,6 +370,7 @@ final class DataManager
             foreach($articles as $article)$articleStatement->execute([(int)$article['id'],(string)$article['title'],(string)$article['slug'],(string)($article['excerpt']??''),(string)($article['body_html']??''),(string)($article['cover_path']??''),(string)($article['seo_title']??''),(string)($article['seo_keywords']??''),(string)($article['meta_description']??''),($article['status']??'draft')==='published'?'published':'draft',$article['published_at']??null,$article['created_at']??date(DATE_ATOM),$article['updated_at']??date(DATE_ATOM)]);
             $articleViewStatement=$this->pdo->prepare('INSERT INTO article_monthly_views(article_id,viewed_month,view_count,updated_at) VALUES(?,?,?,?)');
             foreach($articleMonthlyViews as $view)$articleViewStatement->execute([(int)$view['article_id'],(string)$view['viewed_month'],(int)$view['view_count'],$view['updated_at']??date(DATE_ATOM)]);
+            $this->pdo->prepare('INSERT INTO site_settings(id,icp_number,police_number,updated_at) VALUES(1,?,?,NOW()) ON CONFLICT(id) DO UPDATE SET icp_number=EXCLUDED.icp_number,police_number=EXCLUDED.police_number,updated_at=NOW()')->execute([$siteSettings['icp_number'],$siteSettings['police_number']]);
             $this->pdo->exec("SELECT setval(pg_get_serial_sequence('categories','id'), COALESCE((SELECT MAX(id) FROM categories),1), EXISTS(SELECT 1 FROM categories)); SELECT setval(pg_get_serial_sequence('catalogs','id'), COALESCE((SELECT MAX(id) FROM catalogs),1), EXISTS(SELECT 1 FROM catalogs)); SELECT setval(pg_get_serial_sequence('tutorials','id'), COALESCE((SELECT MAX(id) FROM tutorials),1), EXISTS(SELECT 1 FROM tutorials)); SELECT setval(pg_get_serial_sequence('tutorial_media','id'), COALESCE((SELECT MAX(id) FROM tutorial_media),1), EXISTS(SELECT 1 FROM tutorial_media)); SELECT setval(pg_get_serial_sequence('articles','id'), COALESCE((SELECT MAX(id) FROM articles),1), EXISTS(SELECT 1 FROM articles))");
             $this->pdo->commit();
         } catch (\Throwable $e) {

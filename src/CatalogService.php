@@ -161,14 +161,21 @@ final class CatalogService
     {
         $hash = hash_hmac('sha256', $visitor, Config::get('APP_SECRET'));
         $this->pdo->beginTransaction();
-        $stmt = $this->pdo->prepare('INSERT INTO catalog_daily_views(catalog_id, viewed_on, visitor_hash) VALUES(?, CURRENT_DATE, ?) ON CONFLICT DO NOTHING');
-        $stmt->execute([$id, $hash]);
-        $inserted = $stmt->rowCount() === 1;
-        if ($inserted) {
-            $this->pdo->prepare('UPDATE catalogs SET view_count=view_count+1 WHERE id=?')->execute([$id]);
+        try {
+            $stmt = $this->pdo->prepare('INSERT INTO catalog_daily_views(catalog_id, viewed_on, visitor_hash) VALUES(?, CURRENT_DATE, ?) ON CONFLICT DO NOTHING');
+            $stmt->execute([$id, $hash]);
+            $inserted = $stmt->rowCount() === 1;
+            if ($inserted) {
+                $this->pdo->prepare('UPDATE catalogs SET view_count=view_count+1 WHERE id=?')->execute([$id]);
+            }
+            $this->pdo->commit();
+            return $inserted;
+        } catch (\Throwable $exception) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            throw $exception;
         }
-        $this->pdo->commit();
-        return $inserted;
     }
 
     public function saveCategory(array $input, ?int $id = null): void

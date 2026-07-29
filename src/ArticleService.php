@@ -99,7 +99,7 @@ final class ArticleService
     public function delete(int $id): void
     {
         $article=$this->find($id);if(!$article)return;$this->pdo->prepare('DELETE FROM articles WHERE id=?')->execute([$id]);
-        $paths=[(string)$article['cover_path']];if(preg_match_all('~<img\s+[^>]*src="(/uploads/articles/[A-Za-z0-9._-]+)"~i',(string)$article['body_html'],$matches))$paths=array_merge($paths,$matches[1]);
+        $paths=[(string)$article['cover_path']];if(preg_match_all('~<img\s+[^>]*src="(/uploads/articles/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif))"~i',(string)$article['body_html'],$matches))$paths=array_merge($paths,$matches[1]);
         $referenced=$this->pdo->prepare('SELECT 1 FROM articles WHERE cover_path = ? OR body_html LIKE ? LIMIT 1');
         foreach(array_unique($paths)as$path){
             if(!str_starts_with($path,'/uploads/articles/'))continue;
@@ -158,12 +158,12 @@ final class ArticleService
 
     private function firstBodyImage(string $html): string
     {
-        return preg_match('~<img\s+[^>]*src="(/uploads/articles/[A-Za-z0-9._-]+)"~i',$html,$match)?$match[1]:'';
+        return preg_match('~<img\s+[^>]*src="(/uploads/articles/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif))"~i',$html,$match)?$match[1]:'';
     }
 
-    private function sanitizeHtml(string $html): string
+    public function sanitizeHtml(string $html): string
     {
         if(trim($html)==='')return '';$document=new DOMDocument('1.0','UTF-8');libxml_use_internal_errors(true);$document->loadHTML('<?xml encoding="utf-8"?><div>'.$html.'</div>',LIBXML_HTML_NOIMPLIED|LIBXML_HTML_NODEFDTD);libxml_clear_errors();$allowed=['div','p','h2','h3','ul','ol','li','strong','b','em','i','a','img','blockquote','br'];
-        $walk=function($node)use(&$walk,$allowed):void{foreach(iterator_to_array($node->childNodes)as$child){if(!$child instanceof DOMElement)continue;$tag=strtolower($child->tagName);if(!in_array($tag,$allowed,true)){if(!in_array($tag,['script','style','iframe','object','svg','math'],true))while($child->firstChild)$child->parentNode?->insertBefore($child->firstChild,$child);$child->parentNode?->removeChild($child);continue;}foreach(iterator_to_array($child->attributes)as$attribute){$name=strtolower($attribute->name);$keep=($tag==='a'&&in_array($name,['href','title'],true))||($tag==='img'&&in_array($name,['src','alt'],true));if(!$keep)$child->removeAttribute($attribute->name);}if($tag==='a'&&!preg_match('~^(https?://|/|#)~i',$child->getAttribute('href')))$child->removeAttribute('href');if($tag==='img'&&!preg_match('~^/uploads/articles/[A-Za-z0-9._-]+$~',$child->getAttribute('src')))$child->parentNode?->removeChild($child);else$walk($child);}};$walk($document);$root=$document->documentElement;$result='';foreach(iterator_to_array($root?->childNodes??[])as$child)$result.=$document->saveHTML($child);return trim($result);
+        $walk=function($node)use(&$walk,$allowed):void{foreach(iterator_to_array($node->childNodes)as$child){if(!$child instanceof DOMElement)continue;$tag=strtolower($child->tagName);if(!in_array($tag,$allowed,true)){if(!in_array($tag,['script','style','iframe','object','svg','math'],true))while($child->firstChild)$child->parentNode?->insertBefore($child->firstChild,$child);$child->parentNode?->removeChild($child);continue;}foreach(iterator_to_array($child->attributes)as$attribute){$name=strtolower($attribute->name);$keep=($tag==='a'&&in_array($name,['href','title'],true))||($tag==='img'&&in_array($name,['src','alt'],true));if(!$keep)$child->removeAttribute($attribute->name);}if($tag==='a'&&!preg_match('~^(https?://|/|#)~i',$child->getAttribute('href')))$child->removeAttribute('href');if($tag==='img'&&!preg_match('~^/uploads/articles/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif)$~i',$child->getAttribute('src')))$child->parentNode?->removeChild($child);else$walk($child);}};$walk($document);$root=$document->documentElement;$result='';foreach(iterator_to_array($root?->childNodes??[])as$child)$result.=$document->saveHTML($child);return trim($result);
     }
 }
