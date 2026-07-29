@@ -52,6 +52,8 @@ read_build_env() {
 
 docker build \
   --build-arg PUBLIC_SITE_ENV=production \
+  --build-arg ALPINE_MIRROR=https://mirrors.cloud.tencent.com/alpine \
+  --build-arg NPM_REGISTRY=https://registry.npmmirror.com \
   --build-arg "PUBLIC_FORM_ENDPOINT=$(read_build_env PUBLIC_FORM_ENDPOINT_B64)" \
   --build-arg "PUBLIC_STATICFORMS_API_KEY=$(read_build_env PUBLIC_STATICFORMS_API_KEY_B64)" \
   --build-arg "PUBLIC_FORM_SUBJECT=$(read_build_env PUBLIC_FORM_SUBJECT_B64)" \

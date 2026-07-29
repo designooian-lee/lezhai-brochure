@@ -7,15 +7,19 @@ ARG PUBLIC_FORM_SUBJECT
 ARG PUBLIC_PHONE
 ARG PUBLIC_ADDRESS
 ARG PUBLIC_BUSINESS_HOURS
+ARG NPM_REGISTRY
 ENV PUBLIC_SITE_ENV=$PUBLIC_SITE_ENV PUBLIC_FORM_ENDPOINT=$PUBLIC_FORM_ENDPOINT PUBLIC_STATICFORMS_API_KEY=$PUBLIC_STATICFORMS_API_KEY PUBLIC_FORM_SUBJECT=$PUBLIC_FORM_SUBJECT PUBLIC_PHONE=$PUBLIC_PHONE PUBLIC_ADDRESS=$PUBLIC_ADDRESS PUBLIC_BUSINESS_HOURS=$PUBLIC_BUSINESS_HOURS
-RUN corepack enable
+RUN corepack enable \
+    && if [ -n "$NPM_REGISTRY" ]; then pnpm config set registry "$NPM_REGISTRY"; fi
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY website ./website
 RUN pnpm run build:website
 
 FROM php:8.3-fpm-alpine
-RUN apk add --no-cache libpq-dev libzip-dev icu-dev libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev nginx supervisor curl nodejs chromium \
+ARG ALPINE_MIRROR
+RUN if [ -n "$ALPINE_MIRROR" ]; then sed -i "s#https://dl-cdn.alpinelinux.org/alpine#$ALPINE_MIRROR#g" /etc/apk/repositories; fi \
+    && apk add --no-cache libpq-dev libzip-dev icu-dev libpng-dev libjpeg-turbo-dev libwebp-dev freetype-dev nginx supervisor curl nodejs chromium \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install pdo_pgsql pgsql zip intl gd \
     && mkdir -p /run/nginx /app/storage/runtime /app/storage/logs /app/public/uploads
