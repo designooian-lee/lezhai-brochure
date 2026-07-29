@@ -68,15 +68,22 @@ jobs:
           TEST_ADMIN_PASSWORD: ci-password
 
       - name: Build production image
+        env:
+          PUBLIC_FORM_ENDPOINT: ${{ vars.PUBLIC_FORM_ENDPOINT }}
+          PUBLIC_STATICFORMS_API_KEY: ${{ secrets.PUBLIC_STATICFORMS_API_KEY }}
+          PUBLIC_FORM_SUBJECT: ${{ vars.PUBLIC_FORM_SUBJECT }}
+          PUBLIC_PHONE: ${{ vars.PUBLIC_PHONE }}
+          PUBLIC_ADDRESS: ${{ vars.PUBLIC_ADDRESS }}
+          PUBLIC_BUSINESS_HOURS: ${{ vars.PUBLIC_BUSINESS_HOURS }}
         run: |
           docker build \
             --build-arg PUBLIC_SITE_ENV=production \
-            --build-arg PUBLIC_FORM_ENDPOINT='${{ vars.PUBLIC_FORM_ENDPOINT }}' \
-            --build-arg PUBLIC_STATICFORMS_API_KEY='${{ secrets.PUBLIC_STATICFORMS_API_KEY }}' \
-            --build-arg PUBLIC_FORM_SUBJECT='${{ vars.PUBLIC_FORM_SUBJECT }}' \
-            --build-arg PUBLIC_PHONE='${{ vars.PUBLIC_PHONE }}' \
-            --build-arg PUBLIC_ADDRESS='${{ vars.PUBLIC_ADDRESS }}' \
-            --build-arg PUBLIC_BUSINESS_HOURS='${{ vars.PUBLIC_BUSINESS_HOURS }}' \
+            --build-arg PUBLIC_FORM_ENDPOINT="$PUBLIC_FORM_ENDPOINT" \
+            --build-arg PUBLIC_STATICFORMS_API_KEY="$PUBLIC_STATICFORMS_API_KEY" \
+            --build-arg PUBLIC_FORM_SUBJECT="$PUBLIC_FORM_SUBJECT" \
+            --build-arg PUBLIC_PHONE="$PUBLIC_PHONE" \
+            --build-arg PUBLIC_ADDRESS="$PUBLIC_ADDRESS" \
+            --build-arg PUBLIC_BUSINESS_HOURS="$PUBLIC_BUSINESS_HOURS" \
             -t "lezhai-brochure:${GITHUB_SHA}" .
           docker run --rm --entrypoint php "lezhai-brochure:${GITHUB_SHA}" -r 'if(ini_get("upload_max_filesize")!=="500M"||ini_get("post_max_size")!=="510M"){fwrite(STDERR,"Unexpected upload limits\n");exit(1);}'
           docker run --rm --entrypoint php-fpm "lezhai-brochure:${GITHUB_SHA}" -tt
@@ -84,9 +91,16 @@ jobs:
           for book in wxfu/egep wxfu/nela gfrl/keqh pwww/tzyw wxfu/gjkr wxfu/jzkx glos/pitj; do
             docker run --rm --memory=280m --entrypoint node "lezhai-brochure:${GITHUB_SHA}" scripts/yunzhan-export.js "https://book.yunzhan365.com/${book}/mobile/index.html" /tmp/yunzhan-smoke 1 /usr/bin/chromium-browser
           done
-          docker save "lezhai-brochure:${GITHUB_SHA}" | gzip -1 > lezhai-brochure-image.tar.gz
           printf 'LEZHAI_IMAGE=lezhai-brochure:%s\n' "$GITHUB_SHA" > release.env
-          tar -czf lezhai-brochure-release.tgz docker-compose.production.yml release.env
+          {
+            printf 'PUBLIC_FORM_ENDPOINT_B64=%s\n' "$(printf '%s' "$PUBLIC_FORM_ENDPOINT" | base64 -w0)"
+            printf 'PUBLIC_STATICFORMS_API_KEY_B64=%s\n' "$(printf '%s' "$PUBLIC_STATICFORMS_API_KEY" | base64 -w0)"
+            printf 'PUBLIC_FORM_SUBJECT_B64=%s\n' "$(printf '%s' "$PUBLIC_FORM_SUBJECT" | base64 -w0)"
+            printf 'PUBLIC_PHONE_B64=%s\n' "$(printf '%s' "$PUBLIC_PHONE" | base64 -w0)"
+            printf 'PUBLIC_ADDRESS_B64=%s\n' "$(printf '%s' "$PUBLIC_ADDRESS" | base64 -w0)"
+            printf 'PUBLIC_BUSINESS_HOURS_B64=%s\n' "$(printf '%s' "$PUBLIC_BUSINESS_HOURS" | base64 -w0)"
+          } > build.env
+          tar -czf lezhai-brochure-release.tgz docker-compose.production.yml release.env build.env
 
       - name: Configure SSH
         run: |
@@ -97,7 +111,24 @@ jobs:
 
       - name: Upload release
         run: |
-          scp -i ~/.ssh/deploy_key -P '${{ secrets.VPS_PORT }}' lezhai-brochure-image.tar.gz '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/lezhai-brochure-image.tar.gz'
+          printf '%s\n' "$GITHUB_SHA" > .lezhai-source-sha
+          ssh -i ~/.ssh/deploy_key -p '${{ secrets.VPS_PORT }}' '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}' 'mkdir -p /opt/apps/lezhai-brochure/source'
+          rsync -azc --delete \
+            --exclude='.git/' \
+            --exclude='.env' \
+            --exclude='build.env' \
+            --exclude='release.env' \
+            --exclude='lezhai-brochure-release.tgz' \
+            --exclude='node_modules/' \
+            --exclude='storage/runtime/' \
+            --exclude='storage/logs/' \
+            --exclude='storage/downloads/' \
+            --exclude='storage/local-pages/' \
+            --exclude='storage/website-dist/' \
+            --exclude='public/uploads/' \
+            --exclude='website-source/' \
+            -e "ssh -i ~/.ssh/deploy_key -p ${{ secrets.VPS_PORT }}" \
+            ./ '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/apps/lezhai-brochure/source/'
           scp -i ~/.ssh/deploy_key -P '${{ secrets.VPS_PORT }}' lezhai-brochure-release.tgz '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/lezhai-brochure-release.tgz'
           scp -i ~/.ssh/deploy_key -P '${{ secrets.VPS_PORT }}' scripts/ci/remote-publish.sh '${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/tmp/remote-publish.sh'
 
