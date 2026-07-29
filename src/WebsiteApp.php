@@ -34,8 +34,9 @@ final class WebsiteApp
         $content=str_replace('<p class="article-date">'.e($date).'</p>','<p class="article-date">'.e($date).' · 发布：乐宅.Life</p>',$content);
         $articleUrl='https://lezhai.life/articles/'.$article['slug'];
         $articleImage='https://lezhai.life'.($article['cover_path']?:'/images/og-lezhai.jpg');
+        $publishedAt=(string)($article['published_at']?:$article['updated_at']);
         $schema=['@context'=>'https://schema.org','@graph'=>[
-            ['@type'=>'Article','@id'=>$articleUrl.'#article','headline'=>$article['title'],'description'=>$description,'image'=>$articleImage,'author'=>['@type'=>'Organization','@id'=>'https://lezhai.life/#business','name'=>'乐宅.Life','url'=>'https://lezhai.life/'],'publisher'=>['@type'=>'Organization','@id'=>'https://lezhai.life/#business','name'=>'乐宅.Life','url'=>'https://lezhai.life/','logo'=>['@type'=>'ImageObject','url'=>'https://lezhai.life/brand/logo-signature.png']],'datePublished'=>date(DATE_ATOM,strtotime((string)$article['published_at'])),'dateModified'=>date(DATE_ATOM,strtotime((string)$article['updated_at'])),'mainEntityOfPage'=>['@type'=>'WebPage','@id'=>$articleUrl]],
+            ['@type'=>'Article','@id'=>$articleUrl.'#article','headline'=>$article['title'],'description'=>$description,'image'=>$articleImage,'author'=>['@type'=>'Organization','@id'=>'https://lezhai.life/#business','name'=>'乐宅.Life','url'=>'https://lezhai.life/'],'publisher'=>['@type'=>'Organization','@id'=>'https://lezhai.life/#business','name'=>'乐宅.Life','url'=>'https://lezhai.life/','logo'=>['@type'=>'ImageObject','url'=>'https://lezhai.life/brand/logo-signature.png']],'datePublished'=>date(DATE_ATOM,strtotime($publishedAt)),'dateModified'=>date(DATE_ATOM,strtotime((string)$article['updated_at'])),'mainEntityOfPage'=>['@type'=>'WebPage','@id'=>$articleUrl]],
             $this->breadcrumb([['首页','/'],['文章','/articles'],[(string)$article['title'],'/articles/'.$article['slug']]]),
         ]];
         $this->dynamicShell($title,$description,$content,'/articles/'.$article['slug'],$article['cover_path']?:'/images/og-lezhai.jpg',$schema,$preview,(string)($article['seo_keywords']??''));
