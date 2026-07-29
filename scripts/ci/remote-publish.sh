@@ -102,6 +102,9 @@ for attempt in $(seq 1 30); do
     for backup in "$SITE".backup-brochure-*; do
       [ ! -d "$backup" ] || [ "$backup" = "$BACKUP" ] || rm -rf -- "$backup"
     done
+    for backup in "$APP_DIR"/backups/lezhai-*.sql.gz; do
+      [ ! -f "$backup" ] || [ "$backup" = "$DB_BACKUP" ] || rm -f -- "$backup"
+    done
     echo "Published to $SITE"
     echo "Site backup: $BACKUP"
     echo "Database backup: $DB_BACKUP"
