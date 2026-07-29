@@ -44,6 +44,15 @@ class FakeYunzhanHttpClient extends Lezhai\HttpClient {
 }
 $configCatalog=(new Lezhai\CatalogParser(new FakeYunzhanHttpClient()))->parse('https://book.yunzhan365.com/test/book/mobile/index.html');
 check($configCatalog['pages']===['browser-render://1','browser-render://2'],'加密云展网清单按公开页数解析，不启动浏览器');
+$yunzhanExporter = file_get_contents(dirname(__DIR__) . '/scripts/yunzhan-export.js');
+check(
+    is_string($yunzhanExporter)
+    && !str_contains($yunzhanExporter, '--single-process')
+    && !str_contains($yunzhanExporter, '--renderer-process-limit')
+    && !str_contains($yunzhanExporter, '--disable-software-rasterizer')
+    && !str_contains($yunzhanExporter, '--max-old-space-size'),
+    '云展网还原器不再限制浏览器进程和内存'
+);
 class OversizedGoootuHttpClient extends Lezhai\HttpClient {
     public function get(string $url, bool $resource = false): string { return '<title>超大图册</title>'; }
     public function post(string $url, bool $resource = false): string { return json_encode(['result'=>'ok','data'=>['uuid'=>'test','total_pages'=>2001]]); }

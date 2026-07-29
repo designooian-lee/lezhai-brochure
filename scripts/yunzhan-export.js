@@ -90,7 +90,11 @@ async function capturePage(page, number) {
   if (!sourceUrl || !output) throw new Error('The catalog URL and output directory are required.');
   fs.mkdirSync(output, { recursive: true });
   const { chromium } = loadPlaywright();
-  const launchOptions = { headless: true, args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--disable-extensions', '--disable-background-networking', '--disable-software-rasterizer', '--renderer-process-limit=1', '--no-zygote', '--single-process', '--js-flags=--max-old-space-size=64'], ...(executablePath ? { executablePath } : {}) };
+  const launchOptions = {
+    headless: true,
+    args: ['--no-sandbox', '--disable-dev-shm-usage', '--disable-extensions', '--disable-background-networking'],
+    ...(executablePath ? { executablePath } : {}),
+  };
   let number = 1; let total = 0; let count = 0; let failures = 0;
   while (count === 0 || number <= count) {
     const browser = await chromium.launch(launchOptions);
