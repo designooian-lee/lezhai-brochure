@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-SITE="/opt/1panel/www/sites/lezhai/index"
+SITE="/opt/1panel/www/sites/lezhai.life/index"
 APP_DIR="/opt/apps/lezhai-brochure"
 ENV_FILE="$APP_DIR/.env"
 STAGE="/tmp/lezhai-brochure-release"
 IMAGE_ARCHIVE="/tmp/lezhai-brochure-image.tar.gz"
 RELEASE_ARCHIVE="/tmp/lezhai-brochure-release.tgz"
 TS="$(date +%Y%m%d-%H%M%S)"
-BACKUP="/opt/1panel/www/sites/lezhai/index.backup-brochure-$TS"
-DB_BACKUP="$APP_DIR/backups/Website-$TS.sql.gz"
+BACKUP="/opt/1panel/www/sites/lezhai.life/index.backup-brochure-$TS"
+DB_BACKUP="$APP_DIR/backups/lezhai-$TS.sql.gz"
 COMPOSE_PROJECT="lezhai-brochure"
 SITE_REPLACED=0
 
@@ -29,7 +29,7 @@ rollback_site() {
 trap rollback_site ERR
 trap 'rm -rf "$STAGE" "$IMAGE_ARCHIVE" "$RELEASE_ARCHIVE" /tmp/remote-publish.sh' EXIT
 
-[ "$SITE" = "/opt/1panel/www/sites/lezhai/index" ] || exit 10
+[ "$SITE" = "/opt/1panel/www/sites/lezhai.life/index" ] || exit 10
 test -f "$ENV_FILE"
 test -f "$IMAGE_ARCHIVE"
 test -f "$RELEASE_ARCHIVE"
@@ -40,10 +40,22 @@ tar -xzf "$RELEASE_ARCHIVE" -C "$STAGE"
 test -f "$STAGE/docker-compose.production.yml"
 test -f "$STAGE/release.env"
 
-DB_PASSWORD="$(sed -n 's/^DB_PASSWORD=//p' "$ENV_FILE" | tail -n 1)"
+read_env() {
+  sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1
+}
+
+DB_CONTAINER="$(read_env DB_CONTAINER)"
+DB_PORT="$(read_env DB_PORT)"
+DB_NAME="$(read_env DB_NAME)"
+DB_USER="$(read_env DB_USER)"
+DB_PASSWORD="$(read_env DB_PASSWORD)"
+test -n "$DB_CONTAINER"
+test -n "$DB_PORT"
+test -n "$DB_NAME"
+test -n "$DB_USER"
 test -n "$DB_PASSWORD"
-docker exec -e PGPASSWORD="$DB_PASSWORD" 1Panel-postgresql-4AAi \
-  pg_dump -U Website -d Website | gzip -c > "$DB_BACKUP"
+docker exec -e PGPASSWORD="$DB_PASSWORD" "$DB_CONTAINER" \
+  pg_dump -h 127.0.0.1 -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" | gzip -c > "$DB_BACKUP"
 test -s "$DB_BACKUP"
 
 mkdir -p "$SITE"

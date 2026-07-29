@@ -131,7 +131,7 @@ final class App
         if ($autoOpenId && !$autoOpen) { http_response_code(404); $this->layout('图册不存在', '<main class="empty"><h1>图册不存在或已隐藏</h1><a class="button" href="' . e(base_path()) . '">查看全部图册</a></main>'); return; }
         $shareHead = '';
         if ($autoOpen) {
-            $origin = rtrim(Config::get('PUBLIC_ORIGIN', 'https://www.lezhai.life'), '/');
+            $origin = rtrim(Config::get('PUBLIC_ORIGIN', 'https://lezhai.life'), '/');
             $sharePath = base_path('catalog/' . $autoOpen['id']);
             $coverPath = $autoOpen['cover_path'] ? base_path(ltrim($autoOpen['cover_path'], '/')) : base_path('assets/cover-placeholder.svg');
             $description = trim((string) ($autoOpen['description'] ?? '')) ?: '查看乐宅.Life电子图册';
@@ -156,7 +156,7 @@ final class App
             <a class="brand-placeholder" href="<?= e(base_path()) ?>" aria-label="乐宅.Life 图册首页"><span class="brand-cn">乐宅.Life</span></a>
             <div class="site-header-actions">
                 <p>把喜欢的门，装进生活</p>
-                <a class="header-link" href="https://www.lezhai.life/" target="_blank" rel="noopener noreferrer">进入官网</a>
+                <a class="header-link" href="https://lezhai.life/" target="_blank" rel="noopener noreferrer">进入官网</a>
             </div>
         </header>
         <?= $this->publicNav('catalogs') ?>
@@ -176,7 +176,7 @@ final class App
             </section>
         </main>
         <aside class="warm-tip"><span aria-hidden="true">✦</span><strong>温馨提示</strong><span>看到喜欢的款式，直接截图发给客服</span></aside>
-        <dialog id="reader-dialog" class="reader-dialog"<?php if ($autoOpen): ?> data-auto-reader-url="<?= e(base_path('reader/' . $autoOpen['id'])) ?>" data-auto-view-url="<?= e(base_path('view/' . $autoOpen['id'])) ?>" data-auto-title="<?= e($autoOpen['name']) ?>"<?php endif; ?>><div class="reader-toolbar"><button type="button" data-close-reader aria-label="关闭图册">‹ 返回选款</button><strong id="reader-title">正在打开图册</strong><a class="reader-contact" href="https://www.lezhai.life/contact/" target="_blank" rel="noopener noreferrer">联系我们</a></div><div id="reader-content" class="reader-content"><div class="reader-loading">正在载入图册…</div></div><?php if ($autoOpen): ?><aside class="wechat-share-guide" data-wechat-share-guide hidden role="dialog" aria-modal="true" aria-labelledby="wechat-share-guide-title"><div class="wechat-share-arrow" aria-hidden="true">↗</div><div class="wechat-share-panel"><button type="button" class="wechat-share-close" data-close-wechat-share aria-label="关闭分享提示">×</button><span>当前图册已准备好</span><strong id="wechat-share-guide-title"><?= e($autoOpen['name']) ?></strong><p>点击右上角 ···，选择“发送给朋友”</p><button type="button" class="button" data-confirm-wechat-share>知道了</button></div></aside><?php endif; ?></dialog>
+        <dialog id="reader-dialog" class="reader-dialog"<?php if ($autoOpen): ?> data-auto-reader-url="<?= e(base_path('reader/' . $autoOpen['id'])) ?>" data-auto-view-url="<?= e(base_path('view/' . $autoOpen['id'])) ?>" data-auto-title="<?= e($autoOpen['name']) ?>"<?php endif; ?>><div class="reader-toolbar"><button type="button" data-close-reader aria-label="关闭图册">‹ 返回选款</button><strong id="reader-title">正在打开图册</strong><a class="reader-contact" href="https://lezhai.life/contact/" target="_blank" rel="noopener noreferrer">联系我们</a></div><div id="reader-content" class="reader-content"><div class="reader-loading">正在载入图册…</div></div><?php if ($autoOpen): ?><aside class="wechat-share-guide" data-wechat-share-guide hidden role="dialog" aria-modal="true" aria-labelledby="wechat-share-guide-title"><div class="wechat-share-arrow" aria-hidden="true">↗</div><div class="wechat-share-panel"><button type="button" class="wechat-share-close" data-close-wechat-share aria-label="关闭分享提示">×</button><span>当前图册已准备好</span><strong id="wechat-share-guide-title"><?= e($autoOpen['name']) ?></strong><p>点击右上角 ···，选择“发送给朋友”</p><button type="button" class="button" data-confirm-wechat-share>知道了</button></div></aside><?php endif; ?></dialog>
         <?php $this->layout($autoOpen ? $autoOpen['name'] : '图册选款', (string) ob_get_clean(), false, $shareHead, $autoOpen !== null);
     }
 
@@ -205,7 +205,7 @@ final class App
     private function tutorialsPage(): void
     {
         $result=$this->slicePage($this->tutorials->all(),(int)($_GET['page']??1),8);$items=$result['items']; ob_start(); ?>
-        <header class="site-header"><a class="brand-placeholder" href="<?=e(base_path())?>"><span class="brand-cn">乐宅.Life</span></a><div class="site-header-actions"><p>好设计，更要好落地</p><a class="header-link" href="https://www.lezhai.life/" target="_blank" rel="noopener noreferrer">进入官网</a></div></header>
+        <header class="site-header"><a class="brand-placeholder" href="<?=e(base_path())?>"><span class="brand-cn">乐宅.Life</span></a><div class="site-header-actions"><p>好设计，更要好落地</p><a class="header-link" href="https://lezhai.life/" target="_blank" rel="noopener noreferrer">进入官网</a></div></header>
         <?=$this->publicNav('tutorials')?>
         <main class="public-main"><section class="section-block"><div class="section-heading"><div><span class="eyebrow">SMART LOCK GUIDES</span><h1>指纹锁教程</h1></div><span class="section-note"><?=$result['total']?> 篇</span></div>
         <?php if($items):?><div class="catalog-grid tutorial-grid"><?php foreach($items as $t): $cover=$t['cover_path']?base_path(ltrim($t['cover_path'],'/')):base_path('assets/cover-placeholder.svg');?><article class="catalog-card tutorial-card" data-tutorial-id="<?=(int)$t['id']?>"><a class="catalog-open" href="<?=e(base_path('tutorial/'.$t['id']))?>"><span class="cover-wrap"><img src="<?=e($cover)?>" alt="<?=e($t['title'])?>封面" loading="lazy"></span><span class="card-copy"><small>指纹锁教程</small><strong><?=e($t['title'])?></strong><span><?=e($t['description']?:'查看完整安装与使用说明')?></span><i>查看教程 <b>→</b></i></span></a><div class="tutorial-card-actions"><button class="favorite-button" data-tutorial-favorite="<?=(int)$t['id']?>" aria-pressed="false"><span>♡</span> 收藏</button><button class="share-button" data-share-url="<?=e(base_path('tutorial/'.$t['id']))?>" data-share-title="<?=e($t['title'])?>"><span>↗</span> 分享</button></div></article><?php endforeach?></div><?=$this->publicPagination(base_path('tutorials'),$result['page'],$result['pages'])?><?php else:?><div class="empty-card"><span>暂无教程</span><p>教程整理后会在这里展示。</p></div><?php endif?></section></main>

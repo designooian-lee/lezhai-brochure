@@ -55,7 +55,7 @@ async function main() {
   const catalogTitle = catalogOne[1];
   assert(direct.status === 200 && directHtml.includes('data-auto-reader-url'), '分享链接可直达指定图册');
   assert(directHtml.includes(`<title>${catalogTitle}</title>`) && directHtml.includes(`<meta property="og:title" content="${catalogTitle}">`), '图册直达页标题和分享标题仅使用图册名称');
-  assert(directHtml.includes('<meta property="og:url" content="https://www.lezhai.life/brochure/catalog/1">') && /<meta property="og:image" content="https:\/\/www\.lezhai\.life\/brochure\/(?:uploads|assets)\//.test(directHtml), '图册直达页输出绝对分享地址和封面地址');
+  assert(directHtml.includes('<meta property="og:url" content="https://lezhai.life/brochure/catalog/1">') && /<meta property="og:image" content="https:\/\/lezhai\.life\/brochure\/(?:uploads|assets)\//.test(directHtml), '图册直达页输出绝对分享地址和封面地址');
   const css = await fetch(`${base}/assets/app.css`);
   const cssText = await css.text();
   assert(css.status === 200 && css.headers.get('content-type').startsWith('text/css'), '子目录样式资源以正确 MIME 返回');
@@ -72,6 +72,8 @@ async function main() {
   const traversalBody = await traversal.text();
   assert(!traversalBody.includes('DB_PASSWORD=') && !traversalBody.includes('ADMIN_PASSWORD_HASH='), '路由器拒绝读取 public 目录之外的文件');
   assert(front.headers.get('x-content-type-options') === 'nosniff' && front.headers.has('content-security-policy'), '动态页面发送基础安全响应头');
+  const proxiedLogin = await fetch(`${adminBase}/login`, { headers: { 'x-forwarded-proto': 'https' } });
+  assert((proxiedLogin.headers.getSetCookie?.() || []).some(cookie => /;\s*Secure(?:;|$)/i.test(cookie)) && proxiedLogin.headers.has('strict-transport-security'), 'HTTPS 反向代理下管理员会话使用 Secure Cookie 和 HSTS');
   let imageReaderFound = false;
   for (let id = 1; id <= 15 && !imageReaderFound; id++) { const reader = await fetch(`${base}/reader/${id}`, { headers: { cookie: publicJar.join('; ') } }); imageReaderFound = reader.status === 200 && (await reader.text()).includes('data-image-reader'); }
   assert(imageReaderFound, 'goootu 使用站内图片阅读器');
