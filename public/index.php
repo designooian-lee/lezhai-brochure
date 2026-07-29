@@ -22,8 +22,11 @@ if ($isHttps) {
 }
 
 if (PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
+    $secureRequest = $isHttps || Lezhai\Config::get('APP_ENV', 'production') === 'production';
+    ini_set('session.use_strict_mode', '1');
+    ini_set('session.use_only_cookies', '1');
     session_name('lezhai_platform');
-    session_set_cookie_params(['httponly'=>true,'samesite'=>'Lax','secure'=>$isHttps,'path'=>'/']);
+    session_set_cookie_params(['httponly'=>true,'samesite'=>'Lax','secure'=>$secureRequest,'path'=>'/']);
     session_start();
 }
 

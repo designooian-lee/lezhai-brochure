@@ -6,7 +6,8 @@ namespace Lezhai;
 final class WebsiteApp
 {
     private ArticleService $articles;
-    public function __construct(){ $this->articles=new ArticleService(Database::connection()); }
+    private SiteSettingsService $siteSettings;
+    public function __construct(){ $pdo=Database::connection();$this->articles=new ArticleService($pdo);$this->siteSettings=new SiteSettingsService($pdo); }
 
     public function run(string $path): void
     {
@@ -61,7 +62,8 @@ final class WebsiteApp
     {
         $links='';foreach($this->articles->all(false,4)as$article)$links.='<a href="/articles/'.e($article['slug']).'"><span aria-hidden="true">•</span>'.e($article['title']).'</a>';
         if($links==='')$links='<span class="footer-articles-empty">文章正在整理中</span>';
-        return str_replace('<span data-latest-articles></span>','<span class="footer-latest-articles">'.$links.'</span>',$html);
+        $html=str_replace('<span data-latest-articles></span>','<span class="footer-latest-articles">'.$links.'</span>',$html);
+        return str_replace('<span data-site-filing></span>',$this->siteSettings->footerHtml('/assets/police-filing.svg'),$html);
     }
 
     private function pagination(string $path,int $current,int $pages): string

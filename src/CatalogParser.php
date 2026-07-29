@@ -7,6 +7,8 @@ use RuntimeException;
 
 final class CatalogParser
 {
+    private const MAX_PAGES = 2000;
+
     public function __construct(private readonly HttpClient $http = new HttpClient()) {}
 
     public function parse(string $input): array
@@ -17,12 +19,16 @@ final class CatalogParser
             throw new RuntimeException('链接末尾疑似多了一个 l。建议修正为：' . $fixed);
         }
         $host = strtolower(parse_url($url, PHP_URL_HOST) ?: '');
-        return match ($host) {
+        $result = match ($host) {
             'book.yunzhan365.com' => $this->parseYunzhan($url),
             'book.goootu.com' => $this->parseGoootu($url),
             'flbook.com.cn' => $this->parseFlbook($url),
             default => throw new RuntimeException('暂不支持此图册来源。'),
         };
+        if (count($result['pages'] ?? []) > self::MAX_PAGES) {
+            throw new RuntimeException('图册页数超过 2000 页限制。');
+        }
+        return $result;
     }
 
     private function parseYunzhan(string $url): array
@@ -94,9 +100,13 @@ final class CatalogParser
             throw new RuntimeException('goootu 页面数据解析失败。');
         }
         $info = $data['data'];
+        $totalPages = (int) $info['total_pages'];
+        if ($totalPages > self::MAX_PAGES) {
+            throw new RuntimeException('图册页数超过 2000 页限制。');
+        }
         $base = 'http://book.goootu.com/UpLoads/Magazine/InsidePages/' . $info['uuid'];
         $pages = [];
-        for ($page = 1; $page <= (int) $info['total_pages']; $page++) {
+        for ($page = 1; $page <= $totalPages; $page++) {
             $pages[] = $base . '/1500/' . $page . '.jpg';
         }
         return [

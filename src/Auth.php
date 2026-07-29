@@ -41,7 +41,11 @@ final class Auth
              VALUES (?, 1, NULL, NOW())
              ON CONFLICT(identity_hash) DO UPDATE SET
                 attempts = CASE WHEN login_attempts.updated_at < NOW() - INTERVAL '15 minutes' THEN 1 ELSE login_attempts.attempts + 1 END,
-                blocked_until = CASE WHEN login_attempts.attempts + 1 >= 5 THEN NOW() + INTERVAL '15 minutes' ELSE NULL END,
+                blocked_until = CASE
+                    WHEN login_attempts.updated_at < NOW() - INTERVAL '15 minutes' THEN NULL
+                    WHEN login_attempts.attempts + 1 >= 5 THEN NOW() + INTERVAL '15 minutes'
+                    ELSE NULL
+                END,
                 updated_at = NOW()"
         )->execute([$identity]);
         return false;

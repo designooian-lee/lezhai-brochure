@@ -73,6 +73,15 @@ CREATE TABLE IF NOT EXISTS login_attempts (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS site_settings (
+    id SMALLINT PRIMARY KEY CHECK (id = 1),
+    icp_number VARCHAR(80) NOT NULL DEFAULT '',
+    police_number VARCHAR(80) NOT NULL DEFAULT '',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO site_settings(id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS tutorials (
     id BIGSERIAL PRIMARY KEY,
     title VARCHAR(180) NOT NULL,

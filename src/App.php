@@ -11,13 +11,16 @@ final class App
     private TutorialService $tutorials;
     private ArticleService $articles;
     private CatalogJobService $jobs;
+    private SiteSettingsService $siteSettings;
 
     public function __construct()
     {
-        $this->catalogs = new CatalogService(Database::connection());
-        $this->tutorials = new TutorialService(Database::connection());
-        $this->articles = new ArticleService(Database::connection());
-        $this->jobs = new CatalogJobService(Database::connection());
+        $pdo = Database::connection();
+        $this->catalogs = new CatalogService($pdo);
+        $this->tutorials = new TutorialService($pdo);
+        $this->articles = new ArticleService($pdo);
+        $this->jobs = new CatalogJobService($pdo);
+        $this->siteSettings = new SiteSettingsService($pdo);
     }
 
     public function run(string $path): void
@@ -53,6 +56,8 @@ final class App
                 Auth::verifyCsrf(); Auth::logout(); header('Location: ' . base_path('admin/login'));
             } elseif ($path === '/admin' && $method === 'GET') {
                 Auth::requireLogin(); $this->admin();
+            } elseif ($path === '/admin/filing') {
+                Auth::requireLogin(); $this->filingSettings($method);
             } elseif ($path === '/admin/data' && $method === 'GET') {
                 Auth::requireLogin(); $this->dataManagement();
             } elseif ($path === '/admin/articles/new') {
@@ -329,6 +334,40 @@ final class App
         return $html.'</nav>';
     }
 
+    private function filingSettings(string $method): void
+    {
+        $error = '';
+        if ($method === 'POST') {
+            Auth::verifyCsrf();
+            try {
+                $this->siteSettings->save($_POST);
+                $this->flash('备案号已保存，官网与电子图册页脚已同步更新。');
+                header('Location: ' . base_path('admin/filing')); exit;
+            } catch (RuntimeException $exception) {
+                $error = $exception->getMessage();
+            }
+        }
+        $settings = $method === 'POST' && $error !== '' ? $_POST : $this->siteSettings->get();
+        $flash = $_SESSION['flash'] ?? ''; unset($_SESSION['flash']);
+        ob_start(); ?>
+        <main class="admin-shell"><?= $this->adminHeader('备案号') ?>
+            <?php if ($flash): ?><div class="notice success"><?= e($flash) ?></div><?php endif; ?>
+            <?php if ($error): ?><div class="notice error"><?= e($error) ?></div><?php endif; ?>
+            <section class="form-card filing-form">
+                <div><h2>网站备案信息</h2><p>有填写的备案号会显示在官网和电子图册页脚；留空则不显示。</p></div>
+                <form method="post">
+                    <input type="hidden" name="_csrf" value="<?= e(Auth::csrf()) ?>">
+                    <label>ICP备案号<input name="icp_number" maxlength="80" value="<?= e((string) ($settings['icp_number'] ?? '')) ?>" placeholder="例如：粤ICP备12345678号"></label>
+                    <small>保存后链接至工信部备案管理系统。</small>
+                    <label>公安联网备案号<input name="police_number" maxlength="80" value="<?= e((string) ($settings['police_number'] ?? '')) ?>" placeholder="例如：粤公网安备44130202000001号"></label>
+                    <small>请输入包含“公网安备”和 14 位备案代码的完整备案号。</small>
+                    <div class="form-actions"><button class="button" type="submit">保存备案号</button><a class="button secondary" href="<?= e(base_path('admin')) ?>">返回管理总览</a></div>
+                </form>
+            </section>
+        </main>
+        <?php $this->layout('备案号', (string) ob_get_clean(), true);
+    }
+
     private function slicePage(array $items,int $page,int $perPage): array
     {
         $total=count($items);$pages=max(1,(int)ceil($total/$perPage));$page=min(max(1,$page),$pages);
@@ -491,13 +530,14 @@ final class App
 
     private function adminHeader(string $title): string
     {
-        return '<header class="admin-header"><div><a class="brand-placeholder" href="' . e(base_path('admin')) . '"><span class="brand-cn">乐宅.Life</span></a><h1>' . e($title) . '</h1></div><nav><a href="/" target="_blank">查看官网</a><a href="/brochure" target="_blank">查看图册</a><a href="' . e(base_path('admin/data')) . '">数据管理</a><form method="post" action="' . e(base_path('admin/logout')) . '"><input type="hidden" name="_csrf" value="' . e(Auth::csrf()) . '"><button type="submit">退出</button></form></nav></header>';
+        return '<header class="admin-header"><div><a class="brand-placeholder" href="' . e(base_path('admin')) . '"><span class="brand-cn">乐宅.Life</span></a><h1>' . e($title) . '</h1></div><nav><a class="admin-filing-link" href="' . e(base_path('admin/filing')) . '">备案号</a><a href="/" target="_blank">查看官网</a><a href="/brochure" target="_blank">查看图册</a><a href="' . e(base_path('admin/data')) . '">数据管理</a><form method="post" action="' . e(base_path('admin/logout')) . '"><input type="hidden" name="_csrf" value="' . e(Auth::csrf()) . '"><button type="submit">退出</button></form></nav></header>';
     }
 
     private function layout(string $title, string $content, bool $admin = false, string $head = '', bool $exactTitle = false): void
     {
         $assetVersion=(string)max((int)@filemtime(dirname(__DIR__).'/public/assets/app.css'),(int)@filemtime(dirname(__DIR__).'/public/assets/app.js'));
-        ?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#C65D3B"><title><?= e($title) ?><?= $exactTitle ? '' : '｜乐宅.Life' ?></title><?=$head?><link rel="stylesheet" href="<?= e(base_path('assets/app.css').'?v='.$assetVersion) ?>"><link rel="stylesheet" href="<?= e(base_path('assets/mobile-fixes.css')) ?>"></head><body class="<?= $admin ? 'admin-body' : 'public-body' ?>"><?= $content ?><footer class="app-copyright">© 2026 乐宅.Life</footer><script src="<?= e(base_path('assets/app.js').'?v='.$assetVersion) ?>" defer></script></body></html><?php
+        $filing = $admin ? '' : $this->siteSettings->footerHtml(base_path('assets/police-filing.svg'));
+        ?><!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#C65D3B"><title><?= e($title) ?><?= $exactTitle ? '' : '｜乐宅.Life' ?></title><?=$head?><link rel="stylesheet" href="<?= e(base_path('assets/app.css').'?v='.$assetVersion) ?>"><link rel="stylesheet" href="<?= e(base_path('assets/mobile-fixes.css')) ?>"></head><body class="<?= $admin ? 'admin-body' : 'public-body' ?>"><?= $content ?><footer class="app-copyright">© 2026 乐宅.Life<?= $filing ?></footer><script src="<?= e(base_path('assets/app.js').'?v='.$assetVersion) ?>" defer></script></body></html><?php
     }
 
     private function sourceLabel(string $source): string { return ['yunzhan365'=>'云展网','goootu'=>'goootu','flbook'=>'FLBOOK'][$source] ?? $source; }
