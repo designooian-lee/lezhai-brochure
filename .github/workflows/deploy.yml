@@ -107,10 +107,11 @@ jobs:
       - name: Smoke test
         run: |
           smoke() {
-            curl --retry 12 --retry-delay 5 --retry-all-errors --connect-timeout 10 -fsS "$1" >/dev/null
+            curl --retry 12 --retry-delay 5 --retry-all-errors --connect-timeout 10 --max-redirs 5 -fLsS "$1" >/dev/null
           }
           smoke https://lezhai.life/
           smoke https://lezhai.life/health
           smoke https://lezhai.life/articles
           smoke https://lezhai.life/brochure
           smoke https://lezhai.life/admin/login
+          test "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' https://www.lezhai.life/)" = "301 https://lezhai.life/"
