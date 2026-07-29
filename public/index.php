@@ -15,9 +15,15 @@ header('Referrer-Policy: strict-origin-when-cross-origin');
 header('X-Frame-Options: SAMEORIGIN');
 header("Content-Security-Policy: default-src 'self'; img-src 'self' data: https: http:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https:; frame-src https://book.yunzhan365.com https://flbook.com.cn http://book.goootu.com; form-action 'self' https:; base-uri 'self'; frame-ancestors 'self'");
 
+$forwardedProto = strtolower(trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || $forwardedProto === 'https';
+if ($isHttps) {
+    header('Strict-Transport-Security: max-age=31536000');
+}
+
 if (PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
     session_name('lezhai_platform');
-    session_set_cookie_params(['httponly'=>true,'samesite'=>'Lax','secure'=>(!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off'),'path'=>'/']);
+    session_set_cookie_params(['httponly'=>true,'samesite'=>'Lax','secure'=>$isHttps,'path'=>'/']);
     session_start();
 }
 

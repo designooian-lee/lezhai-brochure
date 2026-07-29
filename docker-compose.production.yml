@@ -9,8 +9,6 @@ services:
     env_file:
       - /opt/apps/lezhai-brochure/.env
     environment:
-      DB_DSN: pgsql:host=1Panel-postgresql-4AAi;port=5432;dbname=Website
-      DB_USER: Website
       BROWSER_EXECUTABLE: /usr/bin/chromium-browser
     volumes:
       - uploads:/app/public/uploads

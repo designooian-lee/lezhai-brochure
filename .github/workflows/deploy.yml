@@ -106,7 +106,11 @@ jobs:
 
       - name: Smoke test
         run: |
-          curl -fsS https://lezhai.life/ >/dev/null
-          curl -fsS https://lezhai.life/health >/dev/null
-          curl -fsS https://lezhai.life/brochure >/dev/null
-          curl -fsS https://lezhai.life/admin/login >/dev/null
+          smoke() {
+            curl --retry 12 --retry-delay 5 --retry-all-errors --connect-timeout 10 -fsS "$1" >/dev/null
+          }
+          smoke https://lezhai.life/
+          smoke https://lezhai.life/health
+          smoke https://lezhai.life/articles
+          smoke https://lezhai.life/brochure
+          smoke https://lezhai.life/admin/login
