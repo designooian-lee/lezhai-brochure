@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 $uri=rawurldecode(parse_url($_SERVER['REQUEST_URI']??'/',PHP_URL_PATH)?:'/');
 $roots=[realpath(__DIR__),realpath(dirname(__DIR__).'/storage/website-dist')];
-if(in_array($uri,['/sitemap.xml','/robots.txt'],true))$roots=[];
+if(in_array($uri,['/sitemap.xml','/robots.txt','/rss.xml','/indexnow-key.txt'],true))$roots=[];
 foreach($roots as $root){
     if($root===false)continue;
     $candidates=[$uri];

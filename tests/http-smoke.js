@@ -27,6 +27,11 @@ const mergeCookies = (old, fresh) => {
 const assert = (condition, message) => { if (!condition) throw new Error(message); console.log(`[通过] ${message}`); };
 const decodeAttribute = value => value.replace(/&quot;/g, '"').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
+const jsonLd = html => [...html.matchAll(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)]
+  .map(match => JSON.parse(match[1]))
+  .flatMap(value => Array.isArray(value) ? value : [value])
+  .flatMap(value => Array.isArray(value?.['@graph']) ? value['@graph'] : [value]);
+
 async function main() {
   for (let i = 0; i < 30; i++) {
     try { if ((await (await fetch(`${base}/health`)).json()).status === 'ok') break; } catch (_) {}
@@ -36,9 +41,19 @@ async function main() {
   assert(health.status === 200 && (await health.json()).status === 'ok', '统一健康检查可访问');
   const website = await fetch(`${siteRoot}/`);
   const websiteHtml = await website.text();
-  assert(website.status === 200 && websiteHtml.includes('ARTICLES') && websiteHtml.includes('13530067877') && websiteHtml.includes('广东省惠州市仲恺区香樟小镇 D10 铺'), '官网首页提供文章页尾与固定联系资料');
+  assert(website.headers.get('set-cookie') === null, 'public website pages do not start a session');
+  assert(website.headers.get('cache-control')?.includes('public') && website.headers.get('cache-control')?.includes('s-maxage=') && website.headers.get('cache-control')?.includes('stale-while-revalidate='), 'public website pages define shared cache controls');
+  assert(jsonLd(websiteHtml).some(item => item?.['@id'] === 'https://lezhai.life/#business'), 'homepage exposes the shared business entity');
+  const staticRedirect = await fetch(`${siteRoot}/services`, { redirect: 'manual' });
+  assert(staticRedirect.status === 301 && staticRedirect.headers.get('location') === '/services/', 'static paths redirect to sitemap canonical URLs');
+  const services = await fetch(`${siteRoot}/services/`);
+  assert(jsonLd(await services.text()).some(item => item?.['@type'] === 'BreadcrumbList'), 'inner pages expose breadcrumb schema');
+  const missing = await fetch(`${siteRoot}/definitely-not-a-page`);
+  const missingHtml = await missing.text();
+  assert(missing.status === 404 && /<meta[^>]+name=["']robots["'][^>]+content=["'][^"']*noindex/i.test(missingHtml), '404 pages return 404 and noindex');
+  assert(website.status === 200 && websiteHtml.includes('ARTICLES') && websiteHtml.includes('13530067877') && websiteHtml.includes('广东省惠州市仲恺区香槟小镇 D10铺'), '官网首页提供文章页尾与固定联系资料');
   const footerHtml = websiteHtml.slice(websiteHtml.indexOf('<footer'));
-  assert(footerHtml.indexOf('提交预约需求') < footerHtml.indexOf('广东省惠州市仲恺区香樟小镇 D10 铺'), '预约需求入口位于页脚定位信息之前');
+  assert(footerHtml.indexOf('提交预约需求') < footerHtml.indexOf('广东省惠州市仲恺区香槟小镇 D10铺'), '预约需求入口位于页脚定位信息之前');
   const articleList = await fetch(`${siteRoot}/articles`);
   assert(articleList.status === 200 && (await articleList.text()).includes('LEZHAI JOURNAL'), '官网文章列表可访问');
   let publicJar = [];
@@ -162,12 +177,25 @@ async function main() {
   const adminWithPublished=await fetch(adminBase,{headers:{cookie:adminJar.join('; ')}});const adminWithPublishedHtml=await adminWithPublished.text();const publishedId=adminWithPublishedHtml.match(/<strong>QA 测试文章<\/strong>[\s\S]*?admin\/articles\/(\d+)\/edit/)[1];
   const publicArticle = await fetch(`${siteRoot}/articles/qa-article`);
   const publicArticleHtml = await publicArticle.text();
+  assert(publicArticle.headers.get('set-cookie') === null && publicArticle.headers.get('cache-control')?.includes('public'), 'public articles have no session cookie and are publicly cacheable');
+  assert(publicArticleHtml.includes('<meta property="og:type" content="article"') && publicArticleHtml.includes('<meta name="twitter:image" content="https://lezhai.life/'), 'article social metadata uses article type and an absolute image');
+  const articleSchemas = jsonLd(publicArticleHtml);
+  const articleSchema = articleSchemas.find(item => ['Article', 'BlogPosting'].includes(item?.['@type']));
+  assert(Boolean(articleSchema?.image && articleSchema?.author && articleSchema?.publisher?.url && articleSchema?.publisher?.logo?.url && articleSchema?.datePublished && articleSchema?.dateModified && articleSchema?.mainEntityOfPage), 'article schema contains image, author, publisher, dates and main entity');
+  assert(articleSchemas.some(item => item?.['@type'] === 'BreadcrumbList'), 'articles expose breadcrumb schema');
   assert(publicArticle.status === 200 && publicArticleHtml.includes('QA SEO 标题') && publicArticleHtml.includes('name="keywords" content="门窗,安装"') && !publicArticleHtml.includes('alert(1)'), '官网文章输出 SEO 并清理危险 HTML');
   assert(publicArticleHtml.includes('热门文章') && publicArticleHtml.includes('article-hot-viewport'), '官网文章右侧显示月度热门文章滚动区');
   const brochureArticle = await fetch(`${base}/articles/qa-article`);
   assert(brochureArticle.status === 200 && (await brochureArticle.text()).includes('https://lezhai.life/articles/qa-article'), '图册文章 canonical 指向官网版本');
   const brochureArticles = await fetch(`${base}/articles`);
   assert(brochureArticles.status === 200 && (await brochureArticles.text()).includes('/brochure/assets/cover-placeholder.svg'), '图册文章无封面时自动显示占位封面');
+  const sitemapSeo = await fetch(`${siteRoot}/sitemap.xml`);
+  assert((await sitemapSeo.text()).includes('<lastmod>'), 'sitemap contains verified lastmod values');
+  const rss = await fetch(`${siteRoot}/rss.xml`);
+  assert(rss.status === 200 && rss.headers.get('content-type')?.includes('application/rss+xml') && (await rss.text()).includes('/articles/qa-article'), 'RSS exposes published articles');
+  const robots = await fetch(`${siteRoot}/robots.txt`);
+  const robotsText = await robots.text();
+  assert(robots.status === 200 && /User-agent:\s*OAI-SearchBot[\s\S]*Allow:\s*\//i.test(robotsText) && /User-agent:\s*GPTBot[\s\S]*Disallow:\s*\//i.test(robotsText) && /User-agent:\s*\*[\s\S]*Disallow:\s*\/admin/i.test(robotsText), 'robots allows OAI-SearchBot while blocking GPTBot and admin');
   const sitemap = await fetch(`${siteRoot}/sitemap.xml`);
   assert(sitemap.status === 200 && (await sitemap.text()).includes('/articles/qa-article'), '站点地图包含已发布文章');
   for (const articleId of [draftId, publishedId]) { const articleRemove = await fetch(`${adminBase}/articles/${articleId}/delete`, { method: 'POST', redirect: 'manual', headers: { cookie: adminJar.join('; '), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ _csrf: csrf }) }); assert(articleRemove.status === 302, `后台可删除测试文章 ${articleId}`); }

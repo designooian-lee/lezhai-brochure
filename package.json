@@ -4,7 +4,8 @@
   "packageManager": "pnpm@10.34.5",
   "scripts": {
     "build:website": "astro build --root website",
-    "check:website": "astro check --root website"
+    "check:website": "astro check --root website",
+    "test:website-assets": "node tests/website-assets.js"
   },
   "dependencies": {
     "@astrojs/react": "5.0.7",

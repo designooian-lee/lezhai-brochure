@@ -3,7 +3,7 @@ import { Picture } from 'astro:assets';
 import { ArrowRightIcon } from '@phosphor-icons/react';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Journey from '../components/Journey.astro';
-import { brand, caseStudies, siteConfig } from '../data/site';
+import { brand, businessId, businessSchema, caseStudies } from '../data/site';
 import hero from '../assets/images/hero-entry.png';
 import entryDoor from '../assets/images/scene-entry-door-v2.png';
 import glassLiving from '../assets/images/scene-glass-living.png';
@@ -19,8 +19,8 @@ const pageTitle = '乐宅.Life｜惠州门窗设计、量尺与安装交付';
 const description = '乐宅.Life 是惠州本地设计型门窗服务商，从选型、现场量尺到安装与售后，让喜欢的门窗效果适合真实的家。';
 const jsonLd = [
   { '@context':'https://schema.org','@type':'WebSite', name:brand.name, url:brand.domain, inLanguage:'zh-CN' },
-  { '@context':'https://schema.org','@type':['Organization','HomeAndConstructionBusiness'], name:brand.name, alternateName:brand.englishName, url:brand.domain, logo:`${brand.domain}/brand/logo-signature.png`, areaServed:{'@type':'City',name:brand.region}, description:brand.category, ...(siteConfig.phone ? { telephone:siteConfig.phone } : {}), ...(siteConfig.address ? { address:{'@type':'PostalAddress',streetAddress:siteConfig.address,addressLocality:'惠州',addressRegion:'广东省',addressCountry:'CN'} } : {}) },
-  { '@context':'https://schema.org','@type':'Service', name:'门窗设计、量尺与安装交付', provider:{'@type':'Organization',name:brand.name,url:brand.domain}, areaServed:{'@type':'City',name:brand.region}, serviceType:'住宅门窗方案、现场量尺、安装交付与售后沟通' },
+  businessSchema,
+  { '@context':'https://schema.org','@type':'Service', name:'门窗设计、量尺与安装交付', provider:{'@id':businessId}, areaServed:{'@type':'City',name:brand.region}, serviceType:'住宅门窗方案、现场量尺、安装交付与售后沟通' },
 ];
 ---
 <BaseLayout title={pageTitle} description={description} path="/" jsonLd={jsonLd}>

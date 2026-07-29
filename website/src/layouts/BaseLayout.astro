@@ -10,10 +10,11 @@ interface Props {
   description: string;
   path?: string;
   image?: string;
+  ogType?: 'website' | 'article';
   jsonLd?: Record<string, unknown> | Record<string, unknown>[];
 }
 
-const { title, description, path = '/', image = '/images/og-lezhai.jpg', jsonLd } = Astro.props;
+const { title, description, path = '/', image = '/images/og-lezhai.jpg', ogType = 'website', jsonLd } = Astro.props;
 const canonical = new URL(path, brand.domain).toString();
 const socialImage = new URL(image, brand.domain).toString();
 const robots = siteConfig.isProduction ? 'index,follow,max-image-preview:large' : 'noindex,nofollow';
@@ -29,8 +30,9 @@ const schemas = Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : [];
     <meta name="description" content={description} />
     <meta name="robots" content={robots} />
     <link rel="canonical" href={canonical} />
+    <link rel="alternate" type="application/rss+xml" title={`${brand.name} 文章`} href="/rss.xml" />
     <link rel="icon" href="/brand/logo-icon.svg" type="image/svg+xml" />
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:site_name" content={brand.name} />
     <meta property="og:title" content={title} />

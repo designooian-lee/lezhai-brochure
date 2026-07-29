@@ -12,8 +12,12 @@ final class ArticleService
 {
     private const MAX_UPLOAD = 8 * 1024 * 1024;
     private const MAX_PIXELS = 40_000_000;
+    private IndexNowService $indexNow;
 
-    public function __construct(private readonly PDO $pdo) {}
+    public function __construct(private readonly PDO $pdo, ?IndexNowService $indexNow = null)
+    {
+        $this->indexNow = $indexNow ?? new IndexNowService();
+    }
 
     public function all(bool $includeDrafts = false, ?int $limit = null): array
     {
@@ -90,6 +94,7 @@ final class ArticleService
             else{$statement=$this->pdo->prepare('INSERT INTO articles(title,slug,excerpt,body_html,cover_path,seo_title,seo_keywords,meta_description,status,published_at) VALUES(?,?,?,?,?,?,?,?,?,?) RETURNING id');$statement->execute($values);$saved=(int)$statement->fetchColumn();if($requestedSlug===''){$slug='article-'.$saved;$this->pdo->prepare('UPDATE articles SET slug=? WHERE id=?')->execute([$slug,$saved]);}}
             $this->pdo->commit();
             if($oldCover!==$coverPath&&str_starts_with($oldCover,'/uploads/articles/')&&!str_contains($body,'src="'.$oldCover.'"'))@unlink(dirname(__DIR__).'/public'.$oldCover);
+            $this->notifySearchEngines($existing, ['slug'=>$slug,'status'=>$status,'published_at'=>$publishedAt]);
             return $saved;
         }catch(\Throwable $exception){if($this->pdo->inTransaction())$this->pdo->rollBack();foreach($newFiles as $path)@unlink(dirname(__DIR__).'/public'.$path);throw $exception;}
     }
@@ -99,6 +104,7 @@ final class ArticleService
     public function delete(int $id): void
     {
         $article=$this->find($id);if(!$article)return;$this->pdo->prepare('DELETE FROM articles WHERE id=?')->execute([$id]);
+        $this->notifySearchEngines($article, null);
         $paths=[(string)$article['cover_path']];if(preg_match_all('~<img\s+[^>]*src="(/uploads/articles/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif))"~i',(string)$article['body_html'],$matches))$paths=array_merge($paths,$matches[1]);
         $referenced=$this->pdo->prepare('SELECT 1 FROM articles WHERE cover_path = ? OR body_html LIKE ? LIMIT 1');
         foreach(array_unique($paths)as$path){
@@ -106,6 +112,17 @@ final class ArticleService
             $referenced->execute([$path,'%src="'.$path.'"%']);
             if(!$referenced->fetchColumn())@unlink(dirname(__DIR__).'/public'.$path);
         }
+    }
+
+    private function notifySearchEngines(?array $before, ?array $after): void
+    {
+        $paths = ['/articles', '/rss.xml', '/sitemap.xml'];
+        foreach ([$before, $after] as $article) {
+            if (($article['status'] ?? '') === 'published' && !empty($article['published_at']) && !empty($article['slug'])) {
+                $paths[] = '/articles/' . $article['slug'];
+            }
+        }
+        $this->indexNow->notify($paths);
     }
 
     private function normalizeSlug(string $slug): string

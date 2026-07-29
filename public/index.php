@@ -21,16 +21,19 @@ if ($isHttps) {
     header('Strict-Transport-Security: max-age=31536000');
 }
 
-if (PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
+$path = rawurldecode(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/');
+$requiresSession = $path === '/admin' || str_starts_with($path, '/admin/')
+    || $path === '/brochure' || str_starts_with($path, '/brochure/');
+if ($requiresSession && PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
     $secureRequest = $isHttps || Lezhai\Config::get('APP_ENV', 'production') === 'production';
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
     session_name('lezhai_platform');
     session_set_cookie_params(['httponly'=>true,'samesite'=>'Lax','secure'=>$secureRequest,'path'=>'/']);
     session_start();
+    header('Cache-Control: private, no-store, max-age=0');
 }
 
-$path = rawurldecode(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/');
 if ($path === '/brochure/admin' || str_starts_with($path, '/brochure/admin/')) {
     $target = substr($path, strlen('/brochure')) ?: '/admin';
     header('Location: ' . $target, true, 301); exit;

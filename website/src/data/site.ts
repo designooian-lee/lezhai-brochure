@@ -45,11 +45,46 @@ export const siteConfig: SiteConfig = {
   formApiKey: import.meta.env.PUBLIC_STATICFORMS_API_KEY || undefined,
   formSubject: import.meta.env.PUBLIC_FORM_SUBJECT || undefined,
   phone: import.meta.env.PUBLIC_PHONE || '13530067877',
-  address: import.meta.env.PUBLIC_ADDRESS || '广东省惠州市仲恺区香樟小镇 D10 铺',
+  address: import.meta.env.PUBLIC_ADDRESS || '广东省惠州市仲恺区香槟小镇 D10铺',
   businessHours: import.meta.env.PUBLIC_BUSINESS_HOURS || undefined,
   wechatQr: import.meta.env.PUBLIC_WECHAT_QR || undefined,
   isProduction: import.meta.env.PUBLIC_SITE_ENV === 'production',
 };
+
+export const businessId = `${brand.domain}/#business`;
+
+export const businessSchema = {
+  '@context': 'https://schema.org',
+  '@type': ['LocalBusiness', 'HomeAndConstructionBusiness'],
+  '@id': businessId,
+  name: brand.name,
+  url: `${brand.domain}/`,
+  logo: `${brand.domain}/brand/logo-signature.png`,
+  image: `${brand.domain}/images/og-lezhai.jpg`,
+  description: brand.category,
+  areaServed: { '@type': 'City', name: brand.region },
+  ...(siteConfig.phone ? { telephone: siteConfig.phone } : {}),
+  ...(siteConfig.address ? {
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: siteConfig.address,
+      addressLocality: brand.region,
+      addressRegion: '广东省',
+      addressCountry: 'CN',
+    },
+  } : {}),
+};
+
+export const breadcrumbSchema = (items: [string, string][]) => ({
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: items.map(([name, path], index) => ({
+    '@type': 'ListItem',
+    position: index + 1,
+    name,
+    item: new URL(path, brand.domain).toString(),
+  })),
+});
 
 export const navigation = [
   { href: '/services/', label: '服务流程' },

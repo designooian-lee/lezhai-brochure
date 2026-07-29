@@ -26,6 +26,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm run check:website
       - run: pnpm run build:website
+      - run: pnpm run test:website-assets
       - run: npx playwright install --with-deps chromium
       - name: Configure
         run: |
@@ -47,6 +48,7 @@ jobs:
       - run: php scripts/migrate.php
       - run: php scripts/seed.php
       - run: php tests/run.php
+      - run: php tests/indexnow.php
       - run: node tests/http-smoke.js
         env:
           TEST_ADMIN_PASSWORD: ci-password
