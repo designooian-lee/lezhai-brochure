@@ -2,7 +2,12 @@
 import { navigation } from '../data/site';
 import { ListIcon, XIcon } from '@phosphor-icons/react';
 const { path = '/' } = Astro.props;
-const active = (href: string) => href === '/' ? path === '/' : path.startsWith(href);
+const normalizePath = (value: string) => value === '/' ? value : value.replace(/\/+$/, '');
+const active = (href: string) => {
+  const current = normalizePath(path);
+  const target = normalizePath(href);
+  return target === '/' ? current === '/' : current === target || current.startsWith(`${target}/`);
+};
 ---
 <header class="site-header">
   <div class="container nav-shell">

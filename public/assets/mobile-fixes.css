@@ -51,6 +51,10 @@
     text-decoration: none;
 }
 
+.reader-toolbar .reader-contact {
+    justify-self: end;
+}
+
 .reader-contact:hover {
     text-decoration: underline;
 }

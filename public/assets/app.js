@@ -52,6 +52,7 @@
   const dialog = document.querySelector('#reader-dialog');
   const content = document.querySelector('#reader-content');
   const title = document.querySelector('#reader-title');
+  const readerShare = document.querySelector('[data-reader-share]');
   let previousUrl = location.href;
   const favoriteKey = 'lezhai_favorites_v1';
   const pendingCatalogShareKey = 'lezhai_pending_catalog_share_v1';
@@ -155,6 +156,10 @@
     if (!dialog || !content) return;
     previousUrl = location.href;
     title.textContent = button.dataset.catalogTitle || '电子图册';
+    if (readerShare) {
+      readerShare.dataset.shareUrl = button.dataset.catalogShareUrl || location.href;
+      readerShare.dataset.shareTitle = button.dataset.catalogTitle || '电子图册';
+    }
     content.innerHTML = '<div class="reader-loading">正在载入图册…</div>';
     dialog.showModal();
     document.body.style.overflow = 'hidden';
@@ -225,7 +230,7 @@
   window.addEventListener('popstate', () => closeReader(true));
   document.addEventListener('keydown', event => { if (event.key === 'Escape' && dialog?.open) closeReader(); });
   if (dialog?.dataset.autoReaderUrl) {
-    openReader({ dataset: { readerUrl: dialog.dataset.autoReaderUrl, viewUrl: dialog.dataset.autoViewUrl, catalogTitle: dialog.dataset.autoTitle } }, false);
+    openReader({ dataset: { readerUrl: dialog.dataset.autoReaderUrl, viewUrl: dialog.dataset.autoViewUrl, catalogShareUrl: dialog.dataset.autoShareUrl, catalogTitle: dialog.dataset.autoTitle } }, false);
   }
   initWechatCatalogShareGuide();
   const jobPanel = document.querySelector('[data-catalog-job]');

@@ -90,6 +90,7 @@ export const navigation = [
   { href: '/services/', label: '服务流程' },
   { href: '/cooperation/', label: '装修公司合作' },
   { href: '/about/', label: '关于乐宅' },
+  { href: '/articles/', label: '案例文章' },
 ];
 
 export const caseStudies: CaseStudy[] = [

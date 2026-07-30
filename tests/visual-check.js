@@ -63,7 +63,19 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
     await page.goto(`${base}/catalog/1`, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await page.waitForSelector('dialog[open]');
     assert(await page.locator('dialog[open]').isVisible() && new URL(page.url()).search === '', '分享链接以干净网址打开并自动进入指定图册');
+    assert(await page.getByRole('button', { name: '分享图册' }).getAttribute('data-share-url') === '/brochure/catalog/1', '图册直达页阅读器配置当前图册分享地址');
     assert(!(await page.locator('[data-wechat-share-guide]').isVisible()), '普通访客打开图册时不显示微信分享引导');
+
+    await page.goto(`${siteRoot}/`, { waitUntil: 'networkidle', timeout: 30000 });
+    await page.locator('.menu-toggle').click();
+    const websiteMobile = await page.evaluate(() => ({
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+      mobileArticlesVisible: [...document.querySelectorAll('#mobile-navigation a')].some(link => link.textContent?.trim() === '案例文章' && getComputedStyle(link).display !== 'none'),
+      footer: document.querySelector('.footer-bottom')?.textContent || '',
+      address: document.querySelector('.site-footer')?.textContent || '',
+    }));
+    assert(!websiteMobile.overflow && websiteMobile.mobileArticlesVisible && websiteMobile.footer.includes('网站地图') && websiteMobile.footer.includes('在线图册') && websiteMobile.address.includes('广东省惠州市仲恺区香槟小镇 D10铺'), '手机版官网导航、地址和在线图册页脚入口显示正确');
+    await page.screenshot({ path: path.join(output, 'website-navigation-footer-390.png'), fullPage: true });
 
     const wechatContext = await browser.newContext({
       viewport: { width: 390, height: 844 },
@@ -71,10 +83,14 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
     });
     const wechatPage = await wechatContext.newPage();
     await wechatPage.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 30000 });
-    const catalogShare = wechatPage.locator('[data-catalog-share]').first();
-    const sharePath = new URL(await catalogShare.getAttribute('data-share-url'), base).pathname;
-    const shareTitle = await catalogShare.getAttribute('data-share-title');
-    await catalogShare.click();
+    const wechatCatalog = wechatPage.locator('[data-reader-url]').first();
+    const sharePath = new URL(await wechatCatalog.getAttribute('data-catalog-share-url'), base).pathname;
+    const shareTitle = await wechatCatalog.getAttribute('data-catalog-title');
+    await wechatCatalog.click();
+    await wechatPage.waitForSelector('dialog[open]');
+    const readerWechatShare = wechatPage.getByRole('button', { name: '分享图册' });
+    assert(await readerWechatShare.getAttribute('data-share-title') === shareTitle, '阅读器分享按钮同步当前图册名称');
+    await readerWechatShare.click();
     await wechatPage.waitForURL(url => url.pathname === sharePath && url.search === '', { timeout: 10000 });
     await wechatPage.waitForSelector('[data-wechat-share-guide]:not([hidden])', { timeout: 10000 });
     assert(await wechatPage.locator('[data-wechat-share-guide]').isVisible() && await wechatPage.title() === shareTitle, '微信内分享进入图册直达页并显示当前图册转发引导');
@@ -92,16 +108,18 @@ const assert = (condition, message) => { if (!condition) throw new Error(message
     });
     const webSharePage = await webShareContext.newPage();
     await webSharePage.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 30000 });
-    const regularShare = webSharePage.locator('[data-catalog-share]').first();
-    const regularTitle = await regularShare.getAttribute('data-share-title');
-    await regularShare.click();
+    const regularCatalog = webSharePage.locator('[data-reader-url]').first();
+    const regularTitle = await regularCatalog.getAttribute('data-catalog-title');
+    await regularCatalog.click();
+    await webSharePage.waitForSelector('dialog[open]');
+    await webSharePage.getByRole('button', { name: '分享图册' }).click();
     await webSharePage.waitForFunction(() => sessionStorage.getItem('web-share-payload'));
     const sharePayload = JSON.parse(await webSharePage.evaluate(() => sessionStorage.getItem('web-share-payload')));
-    assert(sharePayload.title === regularTitle && /\/brochure\/catalog\/\d+$/.test(sharePayload.url), '非微信浏览器继续使用系统分享并传递图册标题与直达链接');
+    assert(sharePayload.title === regularTitle && /\/brochure\/catalog\/\d+$/.test(sharePayload.url), '非微信阅读器继续使用系统分享并传递图册标题与直达链接');
     await webShareContext.close();
 
     await page.setViewportSize({ width: 390, height: 844 });
-    for (const [id, type, marker] of [[1,'goootu','[data-image-reader]'],[5,'yunzhan365','iframe.catalog-frame'],[11,'flbook','iframe.catalog-frame']]) {
+    for (const [id, type, marker] of [[1,'goootu','[data-image-reader]'],[3,'yunzhan365','iframe.catalog-frame'],[2,'flbook','iframe.catalog-frame']]) {
       await page.goto(`${base}/`, { waitUntil: 'networkidle', timeout: 30000 });
       await page.locator(`[data-reader-url$="/reader/${id}"]`).first().evaluate(button => button.click());
       await page.waitForSelector('dialog[open]', { timeout: 10000 });
