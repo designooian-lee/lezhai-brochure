@@ -69,7 +69,7 @@ final class WebsiteApp
 
     private function staticPage(string $path): void
     {
-        $this->publicCache(3600);
+        $this->publicCache(3600, 300);
         $relative=trim($path,'/');$file=dirname(__DIR__).'/storage/website-dist/'.($relative===''?'index.html':$relative.'/index.html');if(!is_file($file)){http_response_code(503);echo '官网静态资源尚未构建，请先运行 pnpm run build:website。';return;}echo $this->injectLatestArticles((string)file_get_contents($file));
     }
 
@@ -137,9 +137,9 @@ final class WebsiteApp
         $query=(string)($_SERVER['QUERY_STRING']??'');header('Cache-Control: public, max-age=3600');header('Location: '.$location.($query!==''?'?'.$query:''),true,301);
     }
 
-    private function publicCache(int $seconds):void
+    private function publicCache(int $seconds, int $browserMaxAge = 0):void
     {
-        header('Cache-Control: public, max-age=0, s-maxage='.$seconds.', stale-while-revalidate='.max(60,(int)($seconds/2)));
+        header('Cache-Control: public, max-age='.$browserMaxAge.', s-maxage='.$seconds.', stale-while-revalidate='.max(60,(int)($seconds/2)));
     }
 
     private function xml(string $value):string

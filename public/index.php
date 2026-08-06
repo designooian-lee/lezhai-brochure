@@ -22,8 +22,7 @@ if ($isHttps) {
 }
 
 $path = rawurldecode(parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/');
-$requiresSession = $path === '/admin' || str_starts_with($path, '/admin/')
-    || $path === '/brochure' || str_starts_with($path, '/brochure/');
+$requiresSession = $path === '/admin' || str_starts_with($path, '/admin/');
 if ($requiresSession && PHP_SAPI !== 'cli' && session_status() !== PHP_SESSION_ACTIVE) {
     $secureRequest = $isHttps || Lezhai\Config::get('APP_ENV', 'production') === 'production';
     ini_set('session.use_strict_mode', '1');
