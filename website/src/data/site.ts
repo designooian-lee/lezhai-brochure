@@ -87,6 +87,7 @@ export const breadcrumbSchema = (items: [string, string][]) => ({
 });
 
 export const navigation = [
+  { href: 'https://lezhai.life/lejia/', label: '乐家APP' },
   { href: '/services/', label: '服务流程' },
   { href: '/cooperation/', label: '装修公司合作' },
   { href: '/about/', label: '关于乐宅' },
