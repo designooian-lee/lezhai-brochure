@@ -1,9 +1,10 @@
 (() => {
-  const articleForm = document.querySelector('[data-article-form]');
+  const articleForm = document.querySelector('[data-article-form], form:has([name="body"])');
   if (articleForm) {
-    const editor = articleForm.querySelector('[data-editor]');
-    const source = articleForm.querySelector('[data-editor-source]');
-    fetch('/admin/categories/list', { credentials: 'same-origin' }).then(response => response.json()).then(data => {
+    let editor = articleForm.querySelector('[data-editor]');
+    const source = articleForm.querySelector('[data-editor-source]') || articleForm.querySelector('[name="body"]');
+    if (!editor && source) { const field=document.createElement('div');field.className='rich-editor-field';field.innerHTML='<span>文章正文</span><div class="editor-toolbar" role="toolbar"><button type="button" data-command="bold">加粗</button><button type="button" data-block="h2">标题</button><button type="button" data-command="insertUnorderedList">列表</button><button type="button" data-link>链接</button><button type="button" data-image>插入图片</button><input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-image-input hidden></div><div class="rich-editor" contenteditable="true" data-editor></div><small>支持图片、视频和 HTML 嵌入。</small>';editor=field.querySelector('[data-editor]');editor.innerHTML=source.value;source.before(field);source.hidden=true; }
+    if (articleForm.hasAttribute('data-article-form')) fetch('/admin/categories/list', { credentials: 'same-origin' }).then(response => response.json()).then(data => {
       const label = document.createElement('label'); label.textContent = '所属分类'; const select = document.createElement('select'); select.name = 'category_id'; select.innerHTML = '<option value="">未分类</option>';
       (data.items || []).forEach(category => { const option = document.createElement('option'); option.value = category.id; option.textContent = category.name; select.append(option); }); label.append(select);
       articleForm.querySelector('label')?.after(label); const match = location.pathname.match(/\/admin\/articles\/(\d+)\/edit$/); if (match) fetch(`/admin/articles/${match[1]}/category`, { credentials: 'same-origin' }).then(response => response.json()).then(current => { select.value = String(current.category_id || ''); }).catch(() => {});
