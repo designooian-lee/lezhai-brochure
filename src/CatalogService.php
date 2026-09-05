@@ -185,7 +185,7 @@ final class CatalogService
             throw new RuntimeException('分类名称不能为空。');
         }
         $slug = trim((string) ($input['slug'] ?? '')) ?: 'category-' . substr(hash('sha256', $name), 0, 10);
-        $values = [$name, $slug, (int) ($input['sort_order'] ?? 0), isset($input['is_active'])];
+        $values = [$name, $slug, (int) ($input['sort_order'] ?? 0), isset($input['is_active']) ? 'true' : 'false'];
         if ($id) {
             $values[] = $id;
             $this->pdo->prepare('UPDATE categories SET name=?, slug=?, sort_order=?, is_active=?, updated_at=NOW() WHERE id=?')->execute($values);
