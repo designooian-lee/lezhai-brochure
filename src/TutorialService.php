@@ -34,7 +34,8 @@ final class TutorialService
         if ($id && !$existing) throw new RuntimeException('教程不存在。');
         $cover=$existing['cover_path']??'';
         if (($files['cover']['error']??UPLOAD_ERR_NO_FILE)===UPLOAD_ERR_OK) $cover=$this->upload($files['cover'],'cover',['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'],10*1024*1024);
-        $values=[$title,trim((string)($input['description']??'')),trim((string)($input['body']??'')),$cover,(int)($input['manual_priority']??0),isset($input['is_active'])];
+        $body=(new ArticleService($this->pdo))->sanitizeHtml((string)($input['body']??''));
+        $values=[$title,trim((string)($input['description']??'')),$body,$cover,(int)($input['manual_priority']??0),isset($input['is_active']) ? 'true' : 'false'];
         if ($id) { $values[]=$id; $this->pdo->prepare('UPDATE tutorials SET title=?,description=?,body=?,cover_path=?,manual_priority=?,is_active=?,updated_at=NOW() WHERE id=?')->execute($values); }
         else { $stmt=$this->pdo->prepare('INSERT INTO tutorials(title,description,body,cover_path,manual_priority,is_active) VALUES(?,?,?,?,?,?) RETURNING id'); $stmt->execute($values); $id=(int)$stmt->fetchColumn(); }
         return $id;
