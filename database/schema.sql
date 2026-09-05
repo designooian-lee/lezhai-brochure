@@ -112,6 +112,7 @@ CREATE INDEX IF NOT EXISTS tutorial_media_order ON tutorial_media(tutorial_id, s
 
 CREATE TABLE IF NOT EXISTS articles (
     id BIGSERIAL PRIMARY KEY,
+    category_id BIGINT REFERENCES categories(id) ON DELETE SET NULL,
     title VARCHAR(180) NOT NULL,
     slug VARCHAR(180) NOT NULL UNIQUE,
     excerpt VARCHAR(500) NOT NULL DEFAULT '',
@@ -128,6 +129,20 @@ CREATE TABLE IF NOT EXISTS articles (
 
 CREATE INDEX IF NOT EXISTS articles_public_sort ON articles(status, published_at DESC, id DESC);
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS seo_keywords VARCHAR(300) NOT NULL DEFAULT '';
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS category_id BIGINT REFERENCES categories(id) ON DELETE SET NULL;
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS view_count BIGINT NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS articles_category_sort ON articles(category_id, status, published_at DESC, id DESC);
+
+DO $$
+DECLARE constraint_name TEXT;
+BEGIN
+    SELECT conname INTO constraint_name FROM pg_constraint WHERE conrelid='articles'::regclass AND contype='f' AND pg_get_constraintdef(oid) LIKE '%category_id%';
+    IF constraint_name IS NOT NULL THEN EXECUTE format('ALTER TABLE articles DROP CONSTRAINT %I', constraint_name); END IF;
+    IF to_regclass('article_categories') IS NOT NULL THEN
+        UPDATE articles a SET category_id=c.id FROM article_categories ac LEFT JOIN categories c ON c.name=ac.name WHERE a.category_id=ac.id;
+    END IF;
+    ALTER TABLE articles ADD CONSTRAINT articles_category_id_fkey FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL;
+END $$;
 
 CREATE TABLE IF NOT EXISTS article_monthly_views (
     article_id BIGINT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,

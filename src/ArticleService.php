@@ -21,31 +21,31 @@ final class ArticleService
 
     public function all(bool $includeDrafts = false, ?int $limit = null): array
     {
-        $sql = 'SELECT * FROM articles' . ($includeDrafts ? '' : " WHERE status='published' AND published_at<=NOW()") . ' ORDER BY published_at DESC NULLS LAST,id DESC';
+        $sql = 'SELECT a.*,c.name AS category_name FROM articles a LEFT JOIN categories c ON c.id=a.category_id' . ($includeDrafts ? '' : " WHERE a.status='published' AND a.published_at<=NOW()") . ' ORDER BY a.published_at DESC NULLS LAST,a.id DESC';
         if ($limit !== null) $sql .= ' LIMIT ' . max(1, $limit);
         return $this->pdo->query($sql)->fetchAll();
     }
 
     public function page(int $page, int $perPage, bool $includeDrafts = false): array
     {
-        $where = $includeDrafts ? '' : " WHERE status='published' AND published_at<=NOW()";
-        $total = (int)$this->pdo->query('SELECT COUNT(*) FROM articles'.$where)->fetchColumn();
+        $where = $includeDrafts ? '' : " WHERE a.status='published' AND a.published_at<=NOW()";
+        $total = (int)$this->pdo->query('SELECT COUNT(*) FROM articles a'.$where)->fetchColumn();
         $pages = max(1, (int)ceil($total / $perPage)); $page = min(max(1, $page), $pages);
-        $statement=$this->pdo->prepare('SELECT * FROM articles'.$where.' ORDER BY published_at DESC NULLS LAST,id DESC LIMIT ? OFFSET ?');
+        $statement=$this->pdo->prepare('SELECT a.*,c.name AS category_name FROM articles a LEFT JOIN categories c ON c.id=a.category_id'.$where.' ORDER BY a.published_at DESC NULLS LAST,a.id DESC LIMIT ? OFFSET ?');
         $statement->bindValue(1,$perPage,PDO::PARAM_INT);$statement->bindValue(2,($page-1)*$perPage,PDO::PARAM_INT);$statement->execute();
         return ['items'=>$statement->fetchAll(),'page'=>$page,'pages'=>$pages,'total'=>$total];
     }
 
     public function findBySlug(string $slug, bool $includeDrafts = false): ?array
     {
-        $sql = 'SELECT * FROM articles WHERE slug=?' . ($includeDrafts ? '' : " AND status='published' AND published_at<=NOW()");
+        $sql = 'SELECT a.*,c.name AS category_name FROM articles a LEFT JOIN categories c ON c.id=a.category_id WHERE a.slug=?' . ($includeDrafts ? '' : " AND a.status='published' AND a.published_at<=NOW()");
         $statement = $this->pdo->prepare($sql); $statement->execute([$slug]);
         return $statement->fetch() ?: null;
     }
 
     public function find(int $id): ?array
     {
-        $statement = $this->pdo->prepare('SELECT * FROM articles WHERE id=?'); $statement->execute([$id]);
+        $statement = $this->pdo->prepare('SELECT a.*,c.name AS category_name FROM articles a LEFT JOIN categories c ON c.id=a.category_id WHERE a.id=?'); $statement->execute([$id]);
         return $statement->fetch() ?: null;
     }
 
@@ -58,10 +58,19 @@ final class ArticleService
         return ['previous'=>$previous->fetch()?:null,'next'=>$next->fetch()?:null];
     }
 
-    public function recordMonthlyView(int $articleId): void
+    public function recordMonthlyView(int $articleId): int
     {
         $statement=$this->pdo->prepare("INSERT INTO article_monthly_views(article_id,viewed_month,view_count,updated_at) VALUES(?,date_trunc('month',CURRENT_DATE)::date,1,NOW()) ON CONFLICT(article_id,viewed_month) DO UPDATE SET view_count=article_monthly_views.view_count+1,updated_at=NOW()");
         $statement->execute([$articleId]);
+        $statement=$this->pdo->prepare('UPDATE articles SET view_count=view_count+1 WHERE id=? RETURNING view_count');$statement->execute([$articleId]);
+        return (int)$statement->fetchColumn();
+    }
+
+    public function categories(): array { return $this->pdo->query('SELECT c.*,COUNT(a.id)::int AS article_count FROM categories c LEFT JOIN articles a ON a.category_id=c.id GROUP BY c.id ORDER BY c.sort_order DESC,c.id DESC')->fetchAll(); }
+
+    public function uploadBodyVideo(array $file): string
+    {
+        if(($file['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_OK)throw new RuntimeException('视频上传失败。');if((int)($file['size']??0)<1||(int)($file['size']??0)>100*1024*1024)throw new RuntimeException('视频必须在 100MB 以内。');$temporary=(string)($file['tmp_name']??'');if(!is_uploaded_file($temporary))throw new RuntimeException('视频上传来源无效。');$extension=strtolower(pathinfo((string)($file['name']??''),PATHINFO_EXTENSION));$mime=(new \finfo(FILEINFO_MIME_TYPE))->file($temporary)?:'';$allowed=['mp4'=>'video/mp4','webm'=>'video/webm','ogg'=>'video/ogg'];if(($allowed[$extension]??'')!==$mime)throw new RuntimeException('仅支持 MP4、WebM 或 OGG 视频。');$directory=dirname(__DIR__).'/public/uploads/articles';@mkdir($directory,0775,true);$name='video-'.bin2hex(random_bytes(12)).'.'.$extension;if(!move_uploaded_file($temporary,$directory.'/'.$name))throw new RuntimeException('视频保存失败。');return '/uploads/articles/'.$name;
     }
 
     public function monthlyHot(int $excludeId, int $limit = 10): array
@@ -88,10 +97,11 @@ final class ArticleService
             if($coverPath===''&&!isset($input['remove_cover'])){$first=$this->firstBodyImage($body);if($first!==''){$coverPath=$this->coverFromStoredImage($first);$newFiles[]=$coverPath;}}
             $status=($input['status']??'draft')==='published'?'published':'draft';
             $publishedAt=$status==='published'?($existing['published_at']??date(DATE_ATOM)):null;
-            $values=[$title,$slug,trim((string)($input['excerpt']??'')),$body,$coverPath,trim((string)($input['seo_title']??'')),trim((string)($input['seo_keywords']??'')),trim((string)($input['meta_description']??'')),$status,$publishedAt];
+            $categoryId=(int)($input['category_id']??0);if($categoryId<1)$categoryId=null;else{$category=$this->pdo->prepare('SELECT 1 FROM categories WHERE id=?');$category->execute([$categoryId]);if(!$category->fetchColumn())$categoryId=null;}
+            $values=[$title,$slug,trim((string)($input['excerpt']??'')),$body,$coverPath,trim((string)($input['seo_title']??'')),trim((string)($input['seo_keywords']??'')),trim((string)($input['meta_description']??'')),$categoryId,$status,$publishedAt];
             $this->pdo->beginTransaction();
-            if($id){$values[]=$id;$this->pdo->prepare('UPDATE articles SET title=?,slug=?,excerpt=?,body_html=?,cover_path=?,seo_title=?,seo_keywords=?,meta_description=?,status=?,published_at=?,updated_at=NOW() WHERE id=?')->execute($values);$saved=$id;}
-            else{$statement=$this->pdo->prepare('INSERT INTO articles(title,slug,excerpt,body_html,cover_path,seo_title,seo_keywords,meta_description,status,published_at) VALUES(?,?,?,?,?,?,?,?,?,?) RETURNING id');$statement->execute($values);$saved=(int)$statement->fetchColumn();if($requestedSlug===''){$slug='article-'.$saved;$this->pdo->prepare('UPDATE articles SET slug=? WHERE id=?')->execute([$slug,$saved]);}}
+            if($id){$values[]=$id;$this->pdo->prepare('UPDATE articles SET title=?,slug=?,excerpt=?,body_html=?,cover_path=?,seo_title=?,seo_keywords=?,meta_description=?,category_id=?,status=?,published_at=?,updated_at=NOW() WHERE id=?')->execute($values);$saved=$id;}
+            else{$statement=$this->pdo->prepare('INSERT INTO articles(title,slug,excerpt,body_html,cover_path,seo_title,seo_keywords,meta_description,category_id,status,published_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) RETURNING id');$statement->execute($values);$saved=(int)$statement->fetchColumn();if($requestedSlug===''){$slug='article-'.$saved;$this->pdo->prepare('UPDATE articles SET slug=? WHERE id=?')->execute([$slug,$saved]);}}
             $this->pdo->commit();
             if($oldCover!==$coverPath&&str_starts_with($oldCover,'/uploads/articles/')&&!str_contains($body,'src="'.$oldCover.'"'))@unlink(dirname(__DIR__).'/public'.$oldCover);
             $this->notifySearchEngines($existing, ['slug'=>$slug,'status'=>$status,'published_at'=>$publishedAt]);
@@ -180,7 +190,8 @@ final class ArticleService
 
     public function sanitizeHtml(string $html): string
     {
-        if(trim($html)==='')return '';$document=new DOMDocument('1.0','UTF-8');libxml_use_internal_errors(true);$document->loadHTML('<?xml encoding="utf-8"?><div>'.$html.'</div>',LIBXML_HTML_NOIMPLIED|LIBXML_HTML_NODEFDTD);libxml_clear_errors();$allowed=['div','p','h2','h3','ul','ol','li','strong','b','em','i','a','img','blockquote','br'];
-        $walk=function($node)use(&$walk,$allowed):void{foreach(iterator_to_array($node->childNodes)as$child){if(!$child instanceof DOMElement)continue;$tag=strtolower($child->tagName);if(!in_array($tag,$allowed,true)){if(!in_array($tag,['script','style','iframe','object','svg','math'],true))while($child->firstChild)$child->parentNode?->insertBefore($child->firstChild,$child);$child->parentNode?->removeChild($child);continue;}foreach(iterator_to_array($child->attributes)as$attribute){$name=strtolower($attribute->name);$keep=($tag==='a'&&in_array($name,['href','title'],true))||($tag==='img'&&in_array($name,['src','alt'],true));if(!$keep)$child->removeAttribute($attribute->name);}if($tag==='a'&&!preg_match('~^(https?://|/|#)~i',$child->getAttribute('href')))$child->removeAttribute('href');if($tag==='img'&&!preg_match('~^/uploads/articles/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif)$~i',$child->getAttribute('src')))$child->parentNode?->removeChild($child);else$walk($child);}};$walk($document);$root=$document->documentElement;$result='';foreach(iterator_to_array($root?->childNodes??[])as$child)$result.=$document->saveHTML($child);return trim($result);
+        $html=preg_replace('~(<iframe\b[^>]*\bsrc=["\'])//~i','$1https://',$html)??$html;
+        if(trim($html)==='')return '';$document=new DOMDocument('1.0','UTF-8');libxml_use_internal_errors(true);$document->loadHTML('<?xml encoding="utf-8"?><div>'.$html.'</div>',LIBXML_HTML_NOIMPLIED|LIBXML_HTML_NODEFDTD);libxml_clear_errors();$allowed=['div','p','h2','h3','ul','ol','li','strong','b','em','i','a','img','video','source','iframe','blockquote','br'];
+        $walk=function($node)use(&$walk,$allowed):void{foreach(iterator_to_array($node->childNodes)as$child){if(!$child instanceof DOMElement)continue;$tag=strtolower($child->tagName);if(!in_array($tag,$allowed,true)){if(!in_array($tag,['script','style','object','svg','math'],true))while($child->firstChild)$child->parentNode?->insertBefore($child->firstChild,$child);$child->parentNode?->removeChild($child);continue;}foreach(iterator_to_array($child->attributes)as$attribute){$name=strtolower($attribute->name);$keep=($tag==='a'&&in_array($name,['href','title'],true))||($tag==='img'&&in_array($name,['src','alt'],true))||($tag==='video'&&in_array($name,['src','controls','preload'],true))||($tag==='source'&&in_array($name,['src','type'],true))||($tag==='iframe'&&in_array($name,['src','title','allowfullscreen','allow'],true));if(!$keep)$child->removeAttribute($attribute->name);}if($tag==='a'&&!preg_match('~^(https?://|/|#)~i',$child->getAttribute('href')))$child->removeAttribute('href');if(($tag==='img'||$tag==='video'||$tag==='source')&&!preg_match('~^/uploads/articles/[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif|mp4|webm|ogg)$~i',$child->getAttribute('src')))$child->parentNode?->removeChild($child);elseif($tag==='iframe'&&!preg_match('~^https://~i',$child->getAttribute('src')))$child->parentNode?->removeChild($child);else$walk($child);}};$walk($document);$root=$document->documentElement;$result='';foreach(iterator_to_array($root?->childNodes??[])as$child)$result.=$document->saveHTML($child);return trim($result);
     }
 }

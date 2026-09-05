@@ -70,6 +70,12 @@ final class App
                 Auth::requireLogin(); Auth::verifyCsrf(); $this->articles->delete((int)$m[1]); $this->flash('文章已删除。'); $this->redirectAdmin();
             } elseif ($path === '/admin/articles/image' && $method==='POST') {
                 Auth::requireLogin(); Auth::verifyCsrf(); try{$this->json(['url'=>$this->articles->uploadBodyImage($_FILES['image']??[])]);}catch(RuntimeException $exception){http_response_code(422);$this->json(['error'=>$exception->getMessage()]);}
+            } elseif ($path === '/admin/articles/video' && $method==='POST') {
+                Auth::requireLogin(); Auth::verifyCsrf(); try{$this->json(['url'=>$this->articles->uploadBodyVideo($_FILES['video']??[])]);}catch(RuntimeException $exception){http_response_code(422);$this->json(['error'=>$exception->getMessage()]);}
+            } elseif ($path === '/admin/categories/list' && $method==='GET') {
+                Auth::requireLogin(); $this->json(['items'=>$this->catalogs->categories(true)]);
+            } elseif (preg_match('~^/admin/articles/(\d+)/category$~', $path, $m) && $method==='GET') {
+                Auth::requireLogin(); $this->json(['category_id'=>(int)(($this->articles->find((int)$m[1])['category_id']??0))]);
             } elseif ($path === '/admin/tutorials/new') {
                 Auth::requireLogin(); $this->tutorialForm($method);
             } elseif (preg_match('~^/admin/tutorials/(\d+)/edit$~', $path, $m)) {
