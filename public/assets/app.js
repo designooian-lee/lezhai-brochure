@@ -3,6 +3,11 @@
   if (articleForm) {
     const editor = articleForm.querySelector('[data-editor]');
     const source = articleForm.querySelector('[data-editor-source]');
+    fetch('/admin/categories/list', { credentials: 'same-origin' }).then(response => response.json()).then(data => {
+      const label = document.createElement('label'); label.textContent = '所属分类'; const select = document.createElement('select'); select.name = 'category_id'; select.innerHTML = '<option value="">未分类</option>';
+      (data.items || []).forEach(category => { const option = document.createElement('option'); option.value = category.id; option.textContent = category.name; select.append(option); }); label.append(select);
+      articleForm.querySelector('label')?.after(label); const match = location.pathname.match(/\/admin\/articles\/(\d+)\/edit$/); if (match) fetch(`/admin/articles/${match[1]}/category`, { credentials: 'same-origin' }).then(response => response.json()).then(current => { select.value = String(current.category_id || ''); }).catch(() => {});
+    }).catch(() => {});
     articleForm.addEventListener('submit', () => { source.value = editor.innerHTML; });
     articleForm.querySelectorAll('[data-command]').forEach(button => button.addEventListener('click', () => {
       document.execCommand(button.dataset.command, false); editor.focus();
@@ -15,6 +20,30 @@
       if (url) document.execCommand('createLink', false, url);
     });
     const imageInput = articleForm.querySelector('[data-image-input]');
+    const videoInput = document.createElement('input'); videoInput.type = 'file'; videoInput.accept = 'video/mp4,video/webm,video/ogg'; videoInput.hidden = true; articleForm.append(videoInput);
+    const videoButton = document.createElement('button'); videoButton.type = 'button'; videoButton.textContent = '上传视频'; articleForm.querySelector('.editor-toolbar')?.append(videoButton);
+    const embedButton = document.createElement('button'); embedButton.type = 'button'; embedButton.textContent = '嵌入视频'; articleForm.querySelector('.editor-toolbar')?.append(embedButton);
+    const htmlButton = document.createElement('button'); htmlButton.type = 'button'; htmlButton.textContent = 'HTML'; articleForm.querySelector('.editor-toolbar')?.append(htmlButton);
+    videoButton.addEventListener('click', () => videoInput.click());
+    videoInput.addEventListener('change', async () => {
+      const file = videoInput.files?.[0]; if (!file) return;
+      if (file.size > 100 * 1024 * 1024) { window.alert('视频必须在 100MB 以内。'); return; }
+      const data = new FormData(); data.append('_csrf', articleForm.querySelector('[name="_csrf"]').value); data.append('video', file);
+      const response = await fetch('/admin/articles/video', { method: 'POST', body: data }); const result = await response.json();
+      if (!response.ok) { window.alert(result.error || '视频上传失败。'); return; }
+      editor.focus(); document.execCommand('insertHTML', false, `<video controls preload="metadata" src="${result.url}"></video><p><br></p>`); videoInput.value = '';
+    });
+    embedButton.addEventListener('click', () => {
+      const value = window.prompt('请输入视频嵌入链接，或粘贴 iframe 嵌入代码（支持 B 站及其他 HTTPS 平台）'); if (!value) return;
+      const iframe = new DOMParser().parseFromString(value, 'text/html').querySelector('iframe'); let src = iframe?.getAttribute('src') || value.trim();
+      const bv = (src.match(/BV[\w]+/i) || [])[0]; if (bv && !/^https:\/\//i.test(src)) src = `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bv)}&high_quality=1&danmaku=0`;
+      if (!/^https:\/\//i.test(src)) { window.alert('仅支持 HTTPS 视频嵌入链接。'); return; }
+      editor.focus(); document.execCommand('insertHTML', false, `<iframe src="${src.replace(/"/g, '&quot;')}" title="嵌入视频" allowfullscreen="allowfullscreen" allow="autoplay; fullscreen"></iframe><p><br></p>`);
+    });
+    htmlButton.addEventListener('click', () => {
+      const html = window.prompt('粘贴 HTML 代码（例如 B 站提供的 iframe 嵌入代码）'); if (!html) return;
+      editor.focus(); document.execCommand('insertHTML', false, `${html}<p><br></p>`);
+    });
     articleForm.querySelector('[data-image]')?.addEventListener('click', () => imageInput.click());
     const uploadEditorImage = async file => {
       if (!file || !file.type.startsWith('image/')) return;

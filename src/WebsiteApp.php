@@ -24,13 +24,14 @@ final class WebsiteApp
 
     public function renderArticle(array $article,bool $preview=false): void
     {
-        if(!$preview)$this->articles->recordMonthlyView((int)$article['id']);
+        $views=$preview?(int)($article['view_count']??0):$this->articles->recordMonthlyView((int)$article['id']);
         $title=(string)($article['seo_title']?:$article['title']);$description=(string)($article['meta_description']?:$article['excerpt']);$neighbors=$this->articles->neighbors($article);
         $date=$article['published_at']?date('Y年n月j日',strtotime((string)$article['published_at'])):'草稿预览';
         $neighborHtml='<nav class="website-article-neighbors" aria-label="相邻文章">';foreach(['previous'=>'上一篇','next'=>'下一篇']as$key=>$label){$item=$neighbors[$key]??null;if($item)$neighborHtml.='<a class="'.$key.'" href="/articles/'.e($item['slug']).'"><span>'.$label.'</span><strong>'.e($item['title']).'</strong></a>';}$neighborHtml.='</nav>';
         $hotLinks='';foreach($this->articles->monthlyHot((int)$article['id'],10)as$hot)$hotLinks.='<a href="/articles/'.e($hot['slug']).'"><span>'.e($hot['title']).'</span><small>'.(int)$hot['monthly_views'].' 次阅读</small></a>';
         $hotHtml=$hotLinks===''?'<div class="article-hot-viewport"><p class="article-hot-empty">暂无其他文章</p></div>':'<div class="article-hot-viewport"><div class="article-hot-track">'.$hotLinks.'<div aria-hidden="true" class="article-hot-copy">'.$hotLinks.'</div></div></div>';
-        $content='<section class="content-hero"><div class="container content-hero-box"><p class="eyebrow">LEZHAI JOURNAL</p><h1 class="page-title">'.e($article['title']).'</h1><p class="lead">'.e($article['excerpt']).'</p><p class="article-date">'.e($date).'</p></div></section><section class="section"><div class="container content-grid"><article class="content-main prose website-richtext">'.$article['body_html'].$neighborHtml.'</article><aside class="content-side info-panel"><img src="/brand/logo-signature.png" alt="乐宅.Life，把喜欢的门，装进生活"><dl><dt>文章状态</dt><dd>'.($preview?'管理员预览':'已发布').'</dd><dt>更新时间</dt><dd>'.e(date('Y-m-d',strtotime((string)$article['updated_at']))).'</dd></dl><section class="article-hot" aria-labelledby="article-hot-title"><h2 id="article-hot-title">热门文章</h2>'.$hotHtml.'</section></aside></div></section>';
+        $meta='发布时间：'.e($date).'　所属分类：'.e((string)($article['category_name']??'未分类')).'　实时浏览：'.$views;
+        $content='<section class="content-hero"><div class="container content-hero-box"><p class="eyebrow">LEZHAI JOURNAL</p><h1 class="page-title">'.e($article['title']).'</h1><p class="lead">'.e($article['excerpt']).'</p><p class="article-date">'.$meta.'</p></div></section><section class="section"><div class="container content-grid"><article class="content-main prose website-richtext">'.$article['body_html'].$neighborHtml.'</article><aside class="content-side info-panel"><img src="/brand/logo-signature.png" alt="乐宅.Life，把喜欢的门，装进生活"><dl><dt>文章状态</dt><dd>'.($preview?'管理员预览':'已发布').'</dd><dt>更新时间</dt><dd>'.e(date('Y-m-d',strtotime((string)$article['updated_at']))).'</dd></dl><section class="article-hot" aria-labelledby="article-hot-title"><h2 id="article-hot-title">热门文章</h2>'.$hotHtml.'</section></aside></div></section>';
         $content=str_replace('<p class="article-date">'.e($date).'</p>','<p class="article-date">'.e($date).' · 发布：乐宅.Life</p>',$content);
         $articleUrl='https://lezhai.life/articles/'.$article['slug'];
         $articleImage='https://lezhai.life'.($article['cover_path']?:'/images/og-lezhai.jpg');
@@ -90,7 +91,7 @@ final class WebsiteApp
     private function robots():void
     {
         $this->publicCache(3600);header('Content-Type: text/plain; charset=utf-8');
-        echo "User-agent: OAI-SearchBot\nAllow: /\n\nUser-agent: GPTBot\nDisallow: /\n\nUser-agent: *\nAllow: /\nDisallow: /admin\nSitemap: https://lezhai.life/sitemap.xml\n";
+        echo "User-agent: OAI-SearchBot\nAllow: /\n\nUser-agent: GPTBot\nAllow: /\n\nUser-agent: ClaudeBot\nAllow: /\n\nUser-agent: PerplexityBot\nAllow: /\n\nUser-agent: Google-Extended\nAllow: /\n\nUser-agent: *\nAllow: /\nDisallow: /admin\nSitemap: https://lezhai.life/sitemap.xml\n";
     }
 
     private function sitemap():void
