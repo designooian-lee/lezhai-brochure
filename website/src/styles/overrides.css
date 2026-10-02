@@ -213,8 +213,8 @@
 
 .article-hot { margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line); }
 .article-hot h2 { margin: 0 0 14px; font-size: 18px; }
-.article-hot-viewport { height: 320px; overflow: hidden; }
-.article-hot-track { display: grid; animation: article-hot-scroll 36s linear infinite; }
+.article-hot-viewport { height: 640px; overflow: hidden; }
+.article-hot-track { display: grid; animation: article-hot-scroll 24s linear infinite; }
 .article-hot-track:hover, .article-hot-track:focus-within { animation-play-state: paused; }
 .article-hot-track > a, .article-hot-copy > a { display: grid; gap: 3px; padding: 10px 0; border-bottom: 1px solid var(--line); line-height: 1.45; }
 .article-hot-track small { color: var(--muted); font-size: 11px; }

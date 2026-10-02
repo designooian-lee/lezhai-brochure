@@ -21,7 +21,7 @@ final class ArticleService
 
     public function all(bool $includeDrafts = false, ?int $limit = null): array
     {
-        $sql = 'SELECT a.*,c.name AS category_name FROM articles a LEFT JOIN categories c ON c.id=a.category_id' . ($includeDrafts ? '' : " WHERE a.status='published' AND a.published_at<=NOW()") . ' ORDER BY a.published_at DESC NULLS LAST,a.id DESC';
+        $sql = 'SELECT a.*,c.name AS category_name FROM articles a LEFT JOIN categories c ON c.id=a.category_id' . ($includeDrafts ? '' : " WHERE a.status='published' AND a.published_at<=NOW()") . ' ORDER BY ' . ($includeDrafts ? "CASE WHEN a.status='draft' THEN 0 ELSE 1 END," : '') . 'a.published_at DESC NULLS LAST,a.id DESC';
         if ($limit !== null) $sql .= ' LIMIT ' . max(1, $limit);
         return $this->pdo->query($sql)->fetchAll();
     }
@@ -95,8 +95,17 @@ final class ArticleService
             if(isset($input['remove_cover']))$coverPath='';
             if($cover&&($cover['error']??UPLOAD_ERR_NO_FILE)!==UPLOAD_ERR_NO_FILE){$coverPath=$this->storeImage($cover,'cover',true);$newFiles[]=$coverPath;}
             if($coverPath===''&&!isset($input['remove_cover'])){$first=$this->firstBodyImage($body);if($first!==''){$coverPath=$this->coverFromStoredImage($first);$newFiles[]=$coverPath;}}
-            $status=($input['status']??'draft')==='published'?'published':'draft';
-            $publishedAt=$status==='published'?($existing['published_at']??date(DATE_ATOM)):null;
+            $schedule=($input['action']??'')==='schedule';
+            if($schedule){
+                $scheduledAt=trim((string)($input['scheduled_at']??''));
+                $scheduledDate=\DateTimeImmutable::createFromFormat('!Y-m-d\\TH:i',$scheduledAt);
+                $dateErrors=\DateTimeImmutable::getLastErrors();
+                if(!$scheduledDate||($dateErrors!==false&&($dateErrors['warning_count']>0||$dateErrors['error_count']>0))||$scheduledDate<=new \DateTimeImmutable())throw new RuntimeException('定时发布时间必须是未来时间。');
+                $status='published';$publishedAt=$scheduledDate->format(DATE_ATOM);
+            }else{
+                $status=($input['status']??'draft')==='published'?'published':'draft';
+                $publishedAt=$status==='published'?($existing['published_at']??date(DATE_ATOM)):null;
+            }
             $categoryId=(int)($input['category_id']??0);if($categoryId<1)$categoryId=null;else{$category=$this->pdo->prepare('SELECT 1 FROM categories WHERE id=?');$category->execute([$categoryId]);if(!$category->fetchColumn())$categoryId=null;}
             $values=[$title,$slug,trim((string)($input['excerpt']??'')),$body,$coverPath,trim((string)($input['seo_title']??'')),trim((string)($input['seo_keywords']??'')),trim((string)($input['meta_description']??'')),$categoryId,$status,$publishedAt];
             $this->pdo->beginTransaction();
